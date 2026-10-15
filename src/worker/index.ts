@@ -87,8 +87,8 @@ const maintenanceQueue = new Queue(QUEUES.maintenance, {
 });
 
 async function registerSchedules() {
-  for (const [task, everyMs] of Object.entries(MAINTENANCE_SCHEDULE) as [MaintenanceTask, number][]) {
-    await maintenanceQueue.upsertJobScheduler(`sched-${task}`, { every: everyMs }, { name: task, data: { task } });
+  for (const [task, repeat] of Object.entries(MAINTENANCE_SCHEDULE) as [MaintenanceTask, { every: number } | { pattern: string }][]) {
+    await maintenanceQueue.upsertJobScheduler(`sched-${task}`, repeat, { name: task, data: { task } });
   }
 }
 

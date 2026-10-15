@@ -59,3 +59,13 @@ export async function requireSuperAdmin(): Promise<SessionUser> {
   if (!user.isSuperAdmin) throw forbidden();
   return user;
 }
+
+/** For admin pages: non-admins get a 404 so the admin area isn't advertised. */
+export async function requireSuperAdminPage(): Promise<SessionUser> {
+  const user = await requireUserPage();
+  if (!user.isSuperAdmin) {
+    const { notFound } = await import('next/navigation');
+    notFound();
+  }
+  return user;
+}

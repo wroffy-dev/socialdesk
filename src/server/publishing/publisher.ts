@@ -8,7 +8,7 @@ import { enqueuePublish } from '../queue/producer';
 import { validatePostVersions } from '../services/posts';
 import { incrementUsage } from '../services/entitlements';
 import { isQueuePaused } from '../services/queue';
-import { notifyPublishProblem } from '../services/notifications';
+import { notifyPublished, notifyPublishProblem } from '../services/notifications';
 import { refreshPostStatus } from './status';
 import { buildPublishInput } from './input';
 import { errorsOnly } from '@/lib/platforms';
@@ -142,6 +142,7 @@ export async function processPublish(platformPostId: string, opts: { workerId: s
         await incrementUsage(version.workspaceId, 'posts_published', 1, tx);
         await refreshPostStatus(version.postId, tx);
       });
+      await notifyPublished(version.id).catch((e) => console.error('[publisher] notification failed', e));
       return 'published';
     } catch (err) {
       const e =
