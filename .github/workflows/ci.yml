@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: socialdesk
+          POSTGRES_PASSWORD: socialdesk
+          POSTGRES_DB: socialdesk
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U socialdesk" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://socialdesk:socialdesk@localhost:5432/socialdesk
+      TEST_DATABASE_URL: postgresql://socialdesk:socialdesk@localhost:5432/socialdesk_test
+      REDIS_URL: redis://localhost:6379
+      APP_URL: http://localhost:3000
+      AUTH_SECRET: ci-auth-secret-0123456789abcdef0123456789
+      AUTH_TRUST_HOST: 'true'
+      TOKEN_ENCRYPTION_KEY: Y2ktb25seS1rZXktZm9yLWNpLXRlc3RzLW9ubHkwMDA=
+      MEDIA_SIGNING_SECRET: ci-media-signing-secret-0123456789abcdef
+      MAIL_TRANSPORT: log
+      META_MODE: mock
+      ALLOW_MOCK_IN_PRODUCTION: 'true'
+      DISABLE_RATE_LIMIT: 'true'
+      MAIL_LOG_TO_FILE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create test database
+        run: PGPASSWORD=socialdesk psql -h localhost -U socialdesk -c 'CREATE DATABASE socialdesk_test'
+      - run: npx prisma migrate deploy && npx tsx prisma/seed.ts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:worker
+      - name: End-to-end tests
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
