@@ -37,7 +37,8 @@ export async function sendMail(message: MailMessage): Promise<void> {
     return;
   }
   console.info(`[mail] to=${message.to} subject="${message.subject}"\n${message.text}\n`);
-  if (e.NODE_ENV !== 'production') {
+  // Written to disk in development, or in production only when explicitly enabled (end-to-end tests).
+  if (e.NODE_ENV !== 'production' || process.env.MAIL_LOG_TO_FILE === 'true') {
     const dir = path.resolve('.data/mail');
     await mkdir(dir, { recursive: true });
     const file = `${Date.now()}-${message.to.replace(/[^a-z0-9@._-]/gi, '_')}.json`;

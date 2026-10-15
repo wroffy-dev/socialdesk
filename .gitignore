@@ -16,3 +16,4 @@ next-env.d.ts
 /backups/
 .DS_Store
 npm-debug.log*
+dump.rdb

@@ -6,9 +6,11 @@ const globalForRedis = globalThis as unknown as { redis?: Redis };
 export function redis(): Redis {
   if (!globalForRedis.redis) {
     globalForRedis.redis = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+      // Commands issued while (re)connecting wait briefly instead of failing immediately;
+      // after 2 retries they fail and callers fall back (e.g. the in-memory rate limiter).
       maxRetriesPerRequest: 2,
-      enableOfflineQueue: false,
-      lazyConnect: false,
+      enableOfflineQueue: true,
+      connectTimeout: 5_000,
     });
     globalForRedis.redis.on('error', (err) => {
       if (process.env.NODE_ENV !== 'test') console.error('[redis]', err.message);
