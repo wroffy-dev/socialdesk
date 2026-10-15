@@ -11,6 +11,7 @@ import { isValidTimezone } from '@/lib/timezones';
 import { toDto as mediaDto } from './media';
 import { assertWithinLimit, getUsage, getWorkspacePlan, monthStart } from './entitlements';
 import { nextFreeQueueSlot } from './queue';
+import { adapterFor } from '../adapters/registry';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -199,6 +200,13 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
     if (media.some((m) => m.deletedAt)) issues.push({ severity: 'error', message: 'A media file in this post was deleted.' });
     if (v.socialAccount.status !== 'CONNECTED') {
       issues.push({ severity: 'error', message: `${v.socialAccount.name} needs to be reconnected before publishing.` });
+    } else {
+      const caps = adapterFor(v.socialAccount).capabilities({ scopes: v.socialAccount.scopes });
+      if (!caps.publish) {
+        issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to publish. Reconnect it and allow all requested permissions.` });
+      } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }))) {
+        issues.push({ severity: 'error', message: 'This post format is not supported for this channel.' });
+      }
     }
     return { socialAccountId: v.socialAccountId, platform: v.platform, accountName: v.socialAccount.name, issues };
   });

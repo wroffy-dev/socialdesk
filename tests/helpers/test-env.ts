@@ -13,3 +13,4 @@ export const TEST_ENV: Record<string, string> = {
   DISABLE_RATE_LIMIT: 'true',
 };
 TEST_ENV.PUBLISH_QUEUE_DISABLED = 'true';
+TEST_ENV.PUBLISH_ACCOUNT_LOCK = 'off';
