@@ -540,33 +540,41 @@ enum PostFormat {
 
 /// One channel's version of a campaign, validated and published independently.
 model PlatformPost {
-  id              String             @id @default(cuid())
-  workspaceId     String
-  postId          String
-  socialAccountId String
-  platform        SocialPlatform
-  caption         String             @default("") @db.Text
+  id                String             @id @default(cuid())
+  workspaceId       String
+  postId            String
+  socialAccountId   String
+  platform          SocialPlatform
+  caption           String             @default("") @db.Text
   /// True when this version was edited away from the shared caption/media.
-  customized      Boolean            @default(false)
-  format          PostFormat         @default(FEED)
-  linkUrl         String?
-  status          PlatformPostStatus @default(DRAFT)
-  scheduledAt     DateTime?
+  customized        Boolean            @default(false)
+  format            PostFormat         @default(FEED)
+  linkUrl           String?
+  status            PlatformPostStatus @default(DRAFT)
+  scheduledAt       DateTime?
   /// Stable key so the worker never publishes the same version twice.
-  idempotencyKey  String             @unique @default(cuid())
-  externalId      String?
-  externalUrl     String?
-  publishedAt     DateTime?
-  attemptCount    Int                @default(0)
-  lastError       String?
-  lastErrorCode   String?
-  nextRetryAt     DateTime?
-  lockedAt        DateTime?
-  lockedBy        String?
+  idempotencyKey    String             @unique @default(cuid())
+  externalId        String?
+  externalUrl       String?
+  publishedAt       DateTime?
+  attemptCount      Int                @default(0)
+  lastError         String?
+  lastErrorCode     String?
+  nextRetryAt       DateTime?
+  lockedAt          DateTime?
+  lockedBy          String?
   /// Platform-side container id (e.g. Instagram media container) created before publish.
-  providerState   Json?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  providerState     Json?
+  /// Publishing options (Story vs post, collaborators, tagged people, Reel settings, first comment).
+  /// Shape: src/lib/post-options.ts.
+  options           Json?
+  /// The first comment posted after publishing, or why it couldn't be posted.
+  firstCommentId    String?
+  firstCommentError String?
+  /// When posting the first comment was last started (guards against double posting).
+  firstCommentAt    DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   post          SocialPost          @relation(fields: [postId], references: [id], onDelete: Cascade)

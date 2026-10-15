@@ -11,6 +11,7 @@ Last updated with the initial implementation (all seven phases).
 | Projects inside a workspace (one Instagram + one Facebook Page each), plan limits Free 2 / Pro 5 / Business 10 / Agency 20, concurrent-safe limits and slots, project filters in composer/calendar/list/insights | Vitest, Playwright, manual UI |
 | Cross-tenant isolation (posts, media, channels, members, invitations, comments, saved replies, calendar, insights) | Vitest (service level) + Playwright (HTTP level) |
 | Composer with per-platform versions and validation, drafts with autosave, schedule / queue / publish now | Vitest, Playwright, manual UI |
+| Instagram Stories, Reel settings (share to feed, cover frame), collaborators, tagged people; first comment on Instagram and Facebook with retry | Vitest (rules, Graph requests against a fake API, publisher), Playwright, manual UI |
 | Media library: streaming uploads, type sniffing, thumbnails, private serving, signed public URLs, JPEG conversion | Vitest, manual UI |
 | Calendar (month/week/day, filters, drag to reschedule, drag drafts to schedule), list with tabs, post details, queue | Manual UI, Vitest for services |
 | Publishing engine: single-claim, retries, ambiguous handling, reconciliation after crashes or Redis loss | Vitest (incl. concurrent workers), end-to-end with BullMQ + worker in mock mode |
@@ -22,7 +23,7 @@ Last updated with the initial implementation (all seven phases).
 | Super admin: users, workspaces, plans/limits, failures, integration health, jobs, audit, legal pages | Vitest for services, manual UI |
 | Production build, pruned production install running web + worker | Built and run natively (see below) |
 
-Totals at the time of writing: 98 Vitest tests, 7 Playwright tests, typecheck and lint clean.
+Totals at the time of writing: 108 Vitest tests, 7 Playwright tests, typecheck and lint clean.
 
 ## Needs credentials, approval or an environment I could not access
 
@@ -36,7 +37,7 @@ These are implemented but **not yet exercised against the real services**:
 
 ## Known limitations / next steps
 
-- Stories, Facebook link previews customisation, first comments and Instagram user tags are not implemented.
+- Facebook Stories and Facebook link-preview customisation are not implemented. Instagram Stories cannot carry stickers, links or music through the API.
 - Direct messages are not implemented (need extra Meta permissions and review); the inbox says so.
 - Queue slots are workspace-wide (the schema allows per-channel slots for a later UI).
 - Approval workflows (draft → review → approve) are not in this release.

@@ -5,6 +5,7 @@ import { enqueuePublish } from '../queue/producer';
 import { refreshPostStatus } from './status';
 import { toAccountRef } from '../services/channels';
 import { buildPublishInput } from './input';
+import { postFirstComment } from './first-comment';
 
 const STALE_LOCK_MS = 15 * 60_000;
 const VERIFY_WINDOW_MS = 48 * 3600_000;
@@ -98,6 +99,7 @@ export async function reconcile(now = new Date()) {
         await refreshPostStatus(v.postId, tx);
       });
       if (outcome.status === 'not_published' && v.attemptCount < env().PUBLISH_MAX_ATTEMPTS) await enqueuePublish([{ id: v.id, scheduledAt: now }]);
+      if (outcome.status === 'published') await postFirstComment(v.id).catch((e) => console.error('[reconcile] first comment failed', e));
       stats.verified++;
     } catch (err) {
       console.error('[reconcile] verification failed', v.id, (err as Error).message);

@@ -65,4 +65,14 @@ test('composer blocks invalid Instagram posts', async ({ page }) => {
   await page.getByLabel('Caption').fill('Text only does not work on Instagram');
   await expect(page.getByText('Instagram needs at least one image or video.').first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^Schedule$/ })).toBeDisabled();
+
+  // Instagram options: Story, collaborators and first comment.
+  await page.getByText('Instagram options').click();
+  await page.getByLabel('Add collaborators').fill('@Partner.Brand');
+  await page.getByRole('button', { name: 'Invite' }).click();
+  await expect(page.getByText('@partner.brand')).toBeVisible();
+  await page.getByLabel(/First comment for/).fill('#extra #tags');
+  await page.getByRole('radio', { name: 'Story' }).click();
+  await expect(page.getByText('Publishes as: Story')).toBeVisible();
+  await expect(page.getByText('An Instagram Story needs exactly one image or video.').first()).toBeVisible();
 });

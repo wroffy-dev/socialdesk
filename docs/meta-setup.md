@@ -21,11 +21,11 @@ SocialDesk uses only Meta's official Graph API. One Meta app covers both Faceboo
 | `pages_manage_posts` | Publishing to Facebook Pages |
 | `pages_read_engagement`, `read_insights` | Page and post insights |
 | `pages_read_user_content` | Reading comments on Page posts |
-| `pages_manage_engagement` | Replying to comments |
+| `pages_manage_engagement` | Replying to comments, posting the "first comment" |
 | `instagram_basic` | Instagram account profile |
 | `instagram_content_publish` | Publishing to Instagram |
 | `instagram_manage_insights` | Instagram insights |
-| `instagram_manage_comments` | Reading and replying to Instagram comments |
+| `instagram_manage_comments` | Reading and replying to Instagram comments, posting the "first comment" |
 
 If a user declines some permissions, the related features are shown as unavailable on the Channels page; publishing is blocked only if a publishing permission is missing.
 
@@ -66,6 +66,8 @@ After approval switch `META_MODE=live` and redeploy. Existing development-mode c
 
 ## Known API limitations
 
-- Instagram Stories and Facebook Stories are not published through this version.
+- Instagram: feed photos, carousels, Reels (with "also share to feed" and a cover frame) and **Stories** (one image or video, up to 60 s) are published. Posts and Reels can invite up to 3 **collaborators** (they accept in the Instagram app) and **tag people** (positioned on photos; listed on Reels). Stories can't carry captions, collaborators, tags, link stickers or comments through the API.
+- **First comment**: posted right after publishing on Instagram and Facebook. If it fails the post stays published and the comment can be retried from the post page.
+- Facebook Stories are not published through this version.
 - Direct messages (Instagram/Messenger) need additional permissions and review and are not implemented; the inbox says so instead of simulating them.
 - Some insights metrics are deprecated by Meta over time; unavailable values are shown as “—”, never estimated.

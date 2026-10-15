@@ -3,6 +3,7 @@ import { decrypt } from '../crypto';
 import type { PublishInput, PublishMedia } from '../adapters/types';
 import { signedMediaUrl } from '../services/media';
 import { effectiveContent } from '../services/posts';
+import { normalizeOptions } from '@/lib/post-options';
 
 /** Everything an adapter needs to publish (or verify) one channel version. */
 export async function buildPublishInput(versionId: string): Promise<{ input: PublishInput; accountStatus: string; mode: 'MOCK' | 'DEVELOPMENT' | 'LIVE' }> {
@@ -40,6 +41,7 @@ export async function buildPublishInput(versionId: string): Promise<{ input: Pub
       media,
       idempotencyKey: v.idempotencyKey,
       providerState: (v.providerState ?? null) as Record<string, unknown> | null,
+      options: normalizeOptions(v.platform, v.options),
     },
   };
 }

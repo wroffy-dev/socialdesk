@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { MediaAsset, PlatformPostStatus, PostStatus, Prisma, PublishMode, SocialPlatform } from '@prisma/client';
+import { Prisma, type MediaAsset, type PlatformPostStatus, type PostStatus, type PublishMode, type SocialPlatform } from '@prisma/client';
 import { db, type Tx } from '../db';
 import { badRequest, conflict, forbidden, notFound, validationError } from '../errors';
 import { audit } from '../audit';
@@ -8,6 +8,7 @@ import { enqueuePublish, removePublishJobs } from '../queue/producer';
 import { refreshPostStatus } from '../publishing/status';
 import { errorsOnly, inferFormat, validateVersion, type Issue, type MediaFacts } from '@/lib/platforms';
 import { isValidTimezone } from '@/lib/timezones';
+import { isDefaultOptions, normalizeOptions, versionOptionsSchema } from '@/lib/post-options';
 import { toDto as mediaDto } from './media';
 import { assertWithinLimit, getUsage, getWorkspacePlan, monthStart } from './entitlements';
 import { nextFreeQueueSlot } from './queue';
@@ -26,6 +27,7 @@ export const versionInputSchema = z.object({
   caption: z.string().max(70_000).default(''),
   mediaIds: z.array(id).max(10).default([]),
   linkUrl: url.nullable().optional(),
+  options: versionOptionsSchema.optional(),
 });
 
 export const scheduleActionSchema = z.discriminatedUnion('type', [
@@ -147,6 +149,8 @@ export function toPostDto(post: PostWithDetail, baseMedia: Map<string, MediaAsse
       caption: v.caption,
       linkUrl: v.linkUrl,
       format: v.format,
+      options: normalizeOptions(v.platform, v.options),
+      firstComment: { id: v.firstCommentId, error: v.firstCommentError, startedAt: v.firstCommentAt?.toISOString() ?? null },
       status: v.status,
       scheduledAt: v.scheduledAt?.toISOString() ?? null,
       publishedAt: v.publishedAt?.toISOString() ?? null,
@@ -201,7 +205,8 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
     const media = v.customized ? v.media.map((m) => m.mediaAsset) : post.baseMediaIds.map((m) => baseMedia.get(m)).filter((m): m is MediaAsset => !!m);
     const caption = v.customized ? v.caption : post.baseCaption;
     const linkUrl = v.customized ? v.linkUrl : post.baseLinkUrl;
-    const issues = validateVersion(v.platform, { caption, linkUrl, media: media.filter((m) => !m.deletedAt).map(toFacts) });
+    const options = normalizeOptions(v.platform, v.options);
+    const issues = validateVersion(v.platform, { caption, linkUrl, media: media.filter((m) => !m.deletedAt).map(toFacts) }, options);
     if (media.some((m) => m.deletedAt)) issues.push({ severity: 'error', message: 'A media file in this post was deleted.' });
     if (v.socialAccount.status !== 'CONNECTED') {
       issues.push({ severity: 'error', message: `${v.socialAccount.name} needs to be reconnected before publishing.` });
@@ -209,8 +214,11 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
       const caps = adapterFor(v.socialAccount).capabilities({ scopes: v.socialAccount.scopes });
       if (!caps.publish) {
         issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to publish. Reconnect it and allow all requested permissions.` });
-      } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }))) {
+      } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }, options))) {
         issues.push({ severity: 'error', message: 'This post format is not supported for this channel.' });
+      }
+      if (options.firstComment.trim() && !caps.firstComment) {
+        issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to comment, so the first comment can't be posted. Reconnect it and allow all requested permissions, or remove the first comment.` });
       }
     }
     return { socialAccountId: v.socialAccountId, platform: v.platform, accountName: v.socialAccount.name, issues };
@@ -311,16 +319,18 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
         { baseCaption: input.baseCaption, baseMediaIds: input.baseMediaIds, baseLinkUrl: input.baseLinkUrl ?? null },
         { customized: v.customized, caption: v.caption, linkUrl: v.linkUrl ?? null, mediaIds: v.mediaIds },
       );
-      const format = inferFormat(account.platform, {
-        caption: content.caption,
-        linkUrl: content.linkUrl,
-        media: content.mediaIds.map((m) => toFacts(media.get(m)!)),
-      });
+      const options = normalizeOptions(account.platform, v.options);
+      const format = inferFormat(
+        account.platform,
+        { caption: content.caption, linkUrl: content.linkUrl, media: content.mediaIds.map((m) => toFacts(media.get(m)!)) },
+        options,
+      );
       const data = {
         customized: v.customized,
         caption: v.customized ? v.caption : '',
         linkUrl: v.customized ? (v.linkUrl ?? null) : null,
         format,
+        options: isDefaultOptions(options) ? Prisma.DbNull : (options as Prisma.InputJsonValue),
       };
       const version = await tx.platformPost.upsert({
         where: { postId_socialAccountId: { postId: post.id, socialAccountId: v.socialAccountId } },
@@ -546,6 +556,7 @@ export async function duplicatePost(ctx: WorkspaceCtx, postId: string) {
       caption: v.caption,
       linkUrl: v.linkUrl,
       mediaIds: v.media.map((m) => m.mediaAssetId).filter((m) => liveMedia.has(m)),
+      options: normalizeOptions(v.platform, v.options),
     })),
     action: { type: 'draft' },
   });

@@ -3,6 +3,7 @@ import type { GraphClient } from './graph';
 
 const REQUIRED_PUBLISH = ['instagram_basic', 'instagram_content_publish'];
 const CONTAINER_TTL_MS = 23 * 60 * 60 * 1000;
+const round = (n: number) => Math.round(n * 1000) / 1000;
 
 type ContainerStatus = 'EXPIRED' | 'ERROR' | 'FINISHED' | 'IN_PROGRESS' | 'PUBLISHED';
 
@@ -42,11 +43,12 @@ export class InstagramAdapter implements SocialAdapter {
     if (!has('instagram_manage_insights')) missing.push('instagram_manage_insights (analytics)');
     if (!has('instagram_manage_comments')) missing.push('instagram_manage_comments (comments)');
     return {
-      formats: ['FEED', 'CAROUSEL', 'REEL'],
+      formats: ['FEED', 'CAROUSEL', 'REEL', 'STORY'],
       publish: REQUIRED_PUBLISH.every(has),
       analytics: has('instagram_manage_insights'),
       comments: has('instagram_manage_comments'),
       replyToComments: has('instagram_manage_comments'),
+      firstComment: has('instagram_manage_comments'),
       // Instagram messaging needs the Messenger API for Instagram and separate review.
       directMessages: false,
       missing,
@@ -71,11 +73,38 @@ export class InstagramAdapter implements SocialAdapter {
     }
   }
 
-  private mediaParams(m: PublishMedia, opts: { carouselItem: boolean; caption?: string }) {
-    if (m.kind === 'VIDEO') {
-      return { media_type: opts.carouselItem ? 'VIDEO' : 'REELS', video_url: m.url, is_carousel_item: opts.carouselItem || undefined, caption: opts.caption, share_to_feed: opts.carouselItem ? undefined : true };
+  /**
+   * Container parameters for one item. Collaborators and tagged people are sent as JSON arrays;
+   * on a carousel, collaborators go on the parent and tags on each photo.
+   */
+  private mediaParams(m: PublishMedia, input: PublishInput, opts: { carouselItem: boolean; caption?: string }) {
+    const o = input.options;
+    const firstId = input.media[0]?.id;
+    const tags = o.userTags.filter((t) => (t.mediaId ?? firstId) === m.id);
+    const collaborators = !opts.carouselItem && o.collaborators.length ? JSON.stringify(o.collaborators) : undefined;
+    if (input.format === 'STORY') {
+      return m.kind === 'VIDEO' ? { media_type: 'STORIES', video_url: m.url } : { media_type: 'STORIES', image_url: m.url };
     }
-    return { image_url: m.url, is_carousel_item: opts.carouselItem || undefined, caption: opts.caption };
+    if (m.kind === 'VIDEO') {
+      if (opts.carouselItem) return { media_type: 'VIDEO', video_url: m.url, is_carousel_item: true };
+      return {
+        media_type: 'REELS',
+        video_url: m.url,
+        caption: opts.caption,
+        share_to_feed: o.shareToFeed,
+        thumb_offset: o.coverOffsetSec != null ? Math.round(o.coverOffsetSec * 1000) : undefined,
+        collaborators,
+        // Reels take tagged usernames without a position.
+        user_tags: tags.length ? JSON.stringify(tags.map((t) => ({ username: t.username }))) : undefined,
+      };
+    }
+    return {
+      image_url: m.url,
+      is_carousel_item: opts.carouselItem || undefined,
+      caption: opts.caption,
+      collaborators,
+      user_tags: tags.length ? JSON.stringify(tags.map((t) => ({ username: t.username, x: round(t.x), y: round(t.y) }))) : undefined,
+    };
   }
 
   private async ensureQuota(account: AccountRef) {
@@ -97,6 +126,7 @@ export class InstagramAdapter implements SocialAdapter {
     const { account, media, caption } = input;
     const token = account.accessToken;
     if (media.length === 0) throw new AdapterError('permanent', 'Instagram posts need at least one image or video.', 'ig_no_media');
+    if (input.format === 'STORY' && media.length !== 1) throw new AdapterError('permanent', 'An Instagram Story needs exactly one image or video.', 'ig_story_media');
     await this.ensureQuota(account);
 
     const state: IgState = { ...((input.providerState ?? {}) as IgState) };
@@ -107,7 +137,7 @@ export class InstagramAdapter implements SocialAdapter {
       // Resume: if an earlier attempt already published this container, don't publish again.
       const s = await this.status(containerId, token).catch(() => null);
       if (s?.status_code === 'PUBLISHED') {
-        const found = await this.findRecent(account, caption, new Date(Date.parse(state.containerCreatedAt!) - 60_000));
+        const found = await this.findRecent(input, new Date(Date.parse(state.containerCreatedAt!) - 60_000));
         if (found) return found;
         throw new AdapterError('ambiguous', 'Instagram reports this post as published but it could not be found.', 'ig_published_unmatched');
       }
@@ -116,13 +146,13 @@ export class InstagramAdapter implements SocialAdapter {
 
     if (!containerId) {
       if (media.length === 1) {
-        const res = await this.graph.post<{ id: string }>(`${account.externalId}/media`, token, this.mediaParams(media[0]!, { carouselItem: false, caption }));
+        const res = await this.graph.post<{ id: string }>(`${account.externalId}/media`, token, this.mediaParams(media[0]!, input, { carouselItem: false, caption }));
         containerId = res.id;
       } else {
         const children: Record<string, string> = { ...(fresh ? (state.children ?? {}) : {}) };
         for (const m of media) {
           if (children[m.id]) continue;
-          const res = await this.graph.post<{ id: string }>(`${account.externalId}/media`, token, this.mediaParams(m, { carouselItem: true }));
+          const res = await this.graph.post<{ id: string }>(`${account.externalId}/media`, token, this.mediaParams(m, input, { carouselItem: true }));
           children[m.id] = res.id;
           await hooks.saveState({ children, containerCreatedAt: new Date().toISOString() });
         }
@@ -131,6 +161,7 @@ export class InstagramAdapter implements SocialAdapter {
           media_type: 'CAROUSEL',
           children: media.map((m) => children[m.id]).join(','),
           caption,
+          collaborators: input.options.collaborators.length ? JSON.stringify(input.options.collaborators) : undefined,
         });
         containerId = res.id;
         state.children = children;
@@ -152,12 +183,21 @@ export class InstagramAdapter implements SocialAdapter {
     return { externalId: published.id, externalUrl: permalink };
   }
 
-  private async findRecent(account: AccountRef, caption: string, since: Date) {
+  /** Finds a just-published post: by caption on the profile grid, or the newest Story. */
+  private async findRecent(input: PublishInput, since: Date) {
+    const { account } = input;
+    if (input.format === 'STORY') {
+      const res = await this.graph.get<{ data: { id: string; timestamp?: string; permalink?: string }[] }>(`${account.externalId}/stories`, account.accessToken, {
+        fields: 'id,timestamp,permalink',
+      });
+      const match = res.data.find((m) => m.timestamp && Date.parse(m.timestamp) >= since.getTime());
+      return match ? { externalId: match.id, externalUrl: match.permalink ?? null } : null;
+    }
     const res = await this.graph.get<{ data: { id: string; caption?: string; timestamp: string; permalink?: string }[] }>(`${account.externalId}/media`, account.accessToken, {
       fields: 'id,caption,timestamp,permalink',
       limit: 15,
     });
-    const match = res.data.find((m) => Date.parse(m.timestamp) >= since.getTime() && (m.caption ?? '').trim() === caption.trim());
+    const match = res.data.find((m) => Date.parse(m.timestamp) >= since.getTime() && (m.caption ?? '').trim() === input.caption.trim());
     return match ? { externalId: match.id, externalUrl: match.permalink ?? null } : null;
   }
 
@@ -167,7 +207,7 @@ export class InstagramAdapter implements SocialAdapter {
     if (!state.containerId) return { status: 'not_published' };
     const s = await this.status(state.containerId, input.account.accessToken);
     if (s.status_code === 'PUBLISHED') {
-      const found = await this.findRecent(input.account, input.caption, since);
+      const found = await this.findRecent(input, since);
       return found ? { status: 'published', ...found } : { status: 'unknown' };
     }
     if (s.status_code === 'FINISHED' || s.status_code === 'EXPIRED' || s.status_code === 'ERROR') return { status: 'not_published' };
@@ -250,6 +290,11 @@ export class InstagramAdapter implements SocialAdapter {
       postedAt: c.timestamp,
       isOwn: c.from?.id === account.externalId,
     }));
+  }
+
+  async postComment(account: AccountRef, externalPostId: string, text: string) {
+    const res = await this.graph.post<{ id: string }>(`${externalPostId}/comments`, account.accessToken, { message: text }, true);
+    return { externalId: res.id };
   }
 
   async replyToComment(account: AccountRef, commentExternalId: string, text: string) {

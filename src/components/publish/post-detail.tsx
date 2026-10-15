@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, ExternalLink, MoreHorizontal, Pencil, RotateCw, ShieldQuestion, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, AtSign, CheckCircle2, Clock, ExternalLink, MessageCircle, MoreHorizontal, Pencil, RotateCw, ShieldQuestion, Users, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -135,6 +135,7 @@ export function PostDetail({
               caption={post.versions[0].customized ? post.versions[0].caption : post.baseCaption}
               media={post.versions[0].customized ? post.versions[0].media : post.baseMedia}
               linkUrl={post.versions[0].customized ? post.versions[0].linkUrl : post.baseLinkUrl}
+              options={post.versions[0].options}
             />
           ) : (
             <p className="text-[13px] text-muted">Nothing to preview.</p>
@@ -175,6 +176,22 @@ function VersionCard({
   const [verifyOpen, setVerifyOpen] = useState(false);
   const caption = v.customized ? v.caption : post.baseCaption;
   const media = v.customized ? v.media : post.baseMedia;
+
+  const [commentBusy, setCommentBusy] = useState(false);
+  const firstComment = v.options.firstComment.trim();
+  const retryComment = async () => {
+    setCommentBusy(true);
+    try {
+      const res = await api<{ post: PostDto; outcome: string }>(`/api/w/${workspaceId}/versions/${v.id}/first-comment`, { method: 'POST' });
+      onChanged(res.post);
+      if (res.outcome === 'posted') toast.success('First comment posted');
+      else toast.error(res.post.versions.find((x) => x.id === v.id)?.firstComment.error ?? 'The comment could not be posted.');
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setCommentBusy(false);
+    }
+  };
 
   const retry = async (force = false) => {
     if (force) {
@@ -236,6 +253,48 @@ function VersionCard({
         )}
         <p className="line-clamp-4 whitespace-pre-wrap text-[13px]">{caption || <span className="italic text-muted">No caption</span>}</p>
       </div>
+
+      {(v.options.collaborators.length > 0 || v.options.userTags.length > 0) && (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+          {v.options.collaborators.length > 0 && (
+            <span className="flex items-center gap-1">
+              <Users className="size-3.5" /> Collaborators: {v.options.collaborators.map((c) => `@${c}`).join(', ')}
+            </span>
+          )}
+          {v.options.userTags.length > 0 && (
+            <span className="flex items-center gap-1">
+              <AtSign className="size-3.5" /> Tagged: {[...new Set(v.options.userTags.map((t) => `@${t.username}`))].join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {firstComment && v.format !== 'STORY' && (
+        <div className="mt-2 flex flex-wrap items-start gap-2 rounded-md bg-subtle px-3 py-2 text-[13px]">
+          <MessageCircle className="mt-0.5 size-4 shrink-0 text-muted" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-muted">
+              First comment ·{' '}
+              {v.firstComment.id ? (
+                <span className="text-accent-ink">posted</span>
+              ) : v.firstComment.error ? (
+                <span className="text-danger">not posted</span>
+              ) : v.status === 'PUBLISHED' ? (
+                v.firstComment.startedAt ? 'posting…' : 'not posted yet'
+              ) : (
+                'posted right after publishing'
+              )}
+            </p>
+            <p className="line-clamp-3 whitespace-pre-wrap">{firstComment}</p>
+            {v.firstComment.error && <p className="mt-1 text-xs text-danger">{v.firstComment.error}</p>}
+          </div>
+          {canPublish && v.status === 'PUBLISHED' && !v.firstComment.id && (v.firstComment.error || !v.firstComment.startedAt) && (
+            <Button size="sm" variant="outline" onClick={retryComment} loading={commentBusy}>
+              <RotateCw /> {v.firstComment.error ? 'Retry comment' : 'Post comment'}
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         {v.publishedAt ? (
