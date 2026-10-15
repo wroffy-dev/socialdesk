@@ -52,7 +52,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           rateLimit(`login:ip:${ip}`, 30, 15 * 60),
           rateLimit(`login:email:${email}`, 10, 15 * 60),
         ]);
-        if (process.env.DISABLE_RATE_LIMIT !== 'true' && (!byIp.ok || !byEmail.ok)) throw new RateLimited();
+        const bypass = process.env.DISABLE_RATE_LIMIT === 'true' && process.env.NODE_ENV !== 'production';
+        if (!bypass && (!byIp.ok || !byEmail.ok)) throw new RateLimited();
 
         const user = await db.user.findUnique({ where: { email } });
         if (!user?.passwordHash) {
