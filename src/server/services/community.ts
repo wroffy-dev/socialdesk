@@ -6,7 +6,7 @@ import { audit } from '../audit';
 import { assertCan, type WorkspaceCtx } from '../auth/ctx';
 import { adapterFor } from '../adapters/registry';
 import { AdapterError } from '../adapters/types';
-import { toAccountRef } from './channels';
+import { accountRef } from '../integrations/tokens';
 import { syncComments } from './community-sync';
 
 export const commentsQuerySchema = z.object({
@@ -80,7 +80,7 @@ export async function getCommentThread(ctx: WorkspaceCtx, id: string) {
     db.comment.findMany({ where: { socialAccountId: c.socialAccountId, parentExternalId: c.externalId }, orderBy: { postedAt: 'asc' } }),
     db.internalNote.findMany({ where: { commentId: c.id }, orderBy: { createdAt: 'asc' }, include: { author: { select: { name: true, email: true } } } }),
   ]);
-  const caps = adapterFor(c.socialAccount).capabilities({ scopes: c.socialAccount.scopes });
+  const caps = adapterFor(c.socialAccount).capabilities(c.socialAccount);
   return {
     canReplyOnPlatform: caps.replyToComments && c.socialAccount.status === 'CONNECTED',
     replies: replies.map((r) => ({ id: r.id, authorName: r.authorName, body: r.body, isOwn: r.isOwn, postedAt: r.postedAt.toISOString() })),
@@ -95,13 +95,13 @@ export async function replyToComment(ctx: WorkspaceCtx, id: string, text: string
   if (body.length > 2000) throw badRequest('Replies can be at most 2,000 characters.');
   const c = await loadComment(ctx, id);
   const adapter = adapterFor(c.socialAccount);
-  if (!adapter.capabilities({ scopes: c.socialAccount.scopes }).replyToComments) {
+  if (!adapter.capabilities(c.socialAccount).replyToComments) {
     throw badRequest(`Replying isn't available for ${c.socialAccount.name}. Reconnect it and allow comment permissions.`);
   }
   if (c.socialAccount.status !== 'CONNECTED') throw badRequest(`Reconnect ${c.socialAccount.name} before replying.`);
   let externalId: string;
   try {
-    ({ externalId } = await adapter.replyToComment(toAccountRef(c.socialAccount), c.externalId, body));
+    ({ externalId } = await adapter.replyToComment(await accountRef(c.socialAccount), c.externalId, body));
   } catch (err) {
     if (err instanceof AdapterError && err.kind === 'auth') {
       await db.socialAccount.update({ where: { id: c.socialAccountId }, data: { status: 'NEEDS_REAUTH', lastError: err.message } });
@@ -163,7 +163,7 @@ export async function syncWorkspaceComments(ctx: WorkspaceCtx) {
 export async function communityStatus(ctx: WorkspaceCtx) {
   const accounts = await db.socialAccount.findMany({ where: { workspaceId: ctx.workspace.id, status: { not: 'DISCONNECTED' } } });
   return accounts.map((a) => {
-    const caps = adapterFor(a).capabilities({ scopes: a.scopes });
+    const caps = adapterFor(a).capabilities(a);
     return { id: a.id, name: a.name, platform: a.platform, avatarUrl: a.avatarUrl, comments: caps.comments, replies: caps.replyToComments, messages: caps.directMessages, mode: a.mode };
   });
 }

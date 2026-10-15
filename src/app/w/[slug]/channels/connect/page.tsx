@@ -18,8 +18,8 @@ export default async function ConnectPage({ params, searchParams }: { params: Pr
     <>
       <PageHeader
         icon={<Plug />}
-        title={`Choose the ${data.platformLabel} ${data.platform === 'FACEBOOK' ? 'Page' : 'account'} for ${data.project.name}`}
-        description={`Signed in to Facebook as ${data.fbUserName}. A project links one ${data.platformLabel} ${data.platform === 'FACEBOOK' ? 'Page' : 'account'}.`}
+        title={`Choose the ${data.accountNoun} for ${data.project.name}`}
+        description={`Signed in to ${data.providerLabel} as ${data.signedInAs}. A project links one ${data.accountNoun}.`}
       />
       <PendingAccounts data={data} pendingId={pending} workspace={{ id: ctx.workspace.id, slug }} />
     </>

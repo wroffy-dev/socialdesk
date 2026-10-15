@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { Prisma, SocialAccount, SocialPlatform } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import type { Prisma, SocialAccount } from '@prisma/client';
 import { db } from '../db';
 import { env } from '../env';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
@@ -7,29 +8,29 @@ import { audit } from '../audit';
 import { decrypt, decryptJson, encrypt, encryptJson, hashToken, randomToken, safeEqual } from '../crypto';
 import { assertCan, loadCtx, type WorkspaceCtx } from '../auth/ctx';
 import { adapterFor } from '../adapters/registry';
-import type { AccountRef } from '../adapters/types';
-import { discoverMetaAccounts, metaAuthUrl, mockDiscovery, type DiscoveredAccount } from '../integrations/meta-oauth';
+import type { DiscoveredAccount, Discovery } from '../integrations/types';
+import { mockDiscovery } from '../integrations/mock';
+import { PROVIDERS, mockMode, platformAvailable, platformMode, providerFor } from '../integrations/providers';
+import { accountRef } from '../integrations/tokens';
 import { removePublishJobs } from '../queue/producer';
 import { refreshPostStatus } from '../publishing/status';
-import { PLATFORMS, PLATFORM_INFO } from '@/lib/platforms';
+import { ACCOUNT_NOUN, PLATFORMS, PLATFORM_INFO, PLATFORM_PROVIDER, type Platform, type Provider } from '@/lib/platforms';
 import { findProject, lockProject } from './projects';
+
+export { toAccountRef } from '../integrations/tokens';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const PENDING_TTL_MS = 30 * 60 * 1000;
 
+/** Mode shown in the Meta banners (mock / Meta development / live). */
 export function integrationMode(): 'MOCK' | 'DEVELOPMENT' | 'LIVE' {
   const m = env().META_MODE;
   return m === 'mock' ? 'MOCK' : m === 'live' ? 'LIVE' : 'DEVELOPMENT';
 }
 
-export function toAccountRef(a: Pick<SocialAccount, 'id' | 'externalId' | 'accessTokenEnc' | 'metadata' | 'scopes'>): AccountRef {
-  return {
-    id: a.id,
-    externalId: a.externalId,
-    accessToken: decrypt(a.accessTokenEnc),
-    metadata: (a.metadata ?? {}) as Record<string, unknown>,
-    scopes: a.scopes,
-  };
+/** Which platforms can be connected on this server (credentials configured, or mock mode). */
+export function availablePlatforms(): Record<Platform, boolean> {
+  return Object.fromEntries(PLATFORMS.map((p) => [p, platformAvailable(p)])) as Record<Platform, boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,17 +42,23 @@ export const connectQuerySchema = z.object({
   platform: z.enum(PLATFORMS),
 });
 
+const pkceChallenge = (verifier: string) => createHash('sha256').update(verifier).digest('base64url');
+
 /**
- * Starts a Meta connection for one project slot (its Instagram or its Facebook Page). The
- * random state is stored hashed and bound to this user, workspace, project and platform; the raw
- * value is also set in an httpOnly cookie so the callback must happen in the same browser.
+ * Starts an OAuth connection for one project slot (e.g. its Instagram account or its YouTube
+ * channel). The random state is stored hashed and bound to this user, workspace, project and
+ * platform; the raw value is also set in an httpOnly cookie so the callback must happen in the
+ * same browser. X additionally uses PKCE; the verifier is stored encrypted with the state.
  */
-export async function startMetaConnect(ctx: WorkspaceCtx, projectId: string, platform: SocialPlatform) {
+export async function startConnect(ctx: WorkspaceCtx, projectId: string, platform: Platform) {
   assertCan(ctx, 'channels.manage');
   if (!ctx.user.emailVerified) throw forbidden('Verify your email address before connecting channels.');
   if (!(PLATFORMS as readonly string[]).includes(platform)) throw badRequest('This platform is not supported yet.');
+  if (!platformAvailable(platform)) throw badRequest(`${PLATFORM_INFO[platform].label} isn't set up on this server yet. Ask the administrator to add its app credentials.`);
   await findProject(ctx, projectId);
+  const provider = providerFor(platform);
   const state = randomToken(24);
+  const verifier = provider.usesPkce ? randomToken(48) : null;
   await db.oAuthState.create({
     data: {
       stateHash: hashToken(state),
@@ -59,24 +66,29 @@ export async function startMetaConnect(ctx: WorkspaceCtx, projectId: string, pla
       projectId,
       platform,
       userId: ctx.user.id,
-      provider: 'meta',
+      provider: provider.id,
+      codeVerifierEnc: verifier ? encrypt(verifier) : null,
       expiresAt: new Date(Date.now() + STATE_TTL_MS),
     },
   });
-  const redirectUrl = integrationMode() === 'MOCK' ? `${env().APP_URL}/api/oauth/meta/callback?code=mock&state=${state}` : metaAuthUrl(state);
+  const redirectUrl = mockMode()
+    ? `${env().APP_URL}/api/oauth/${provider.id}/callback?code=mock&state=${state}`
+    : provider.authUrl(state, verifier ? pkceChallenge(verifier) : undefined);
   return { state, redirectUrl };
 }
 
 export type CallbackResult = { ok: true; slug: string; pendingId: string } | { ok: false; slug: string | null; message: string };
 
-export async function handleMetaCallback(
+export async function handleCallback(
+  providerId: Provider,
   user: { id: string; email: string; name: string | null; emailVerified: Date | null },
   params: { code?: string | null; state?: string | null; error?: string | null; errorDescription?: string | null },
   cookieState: string | undefined,
 ): Promise<CallbackResult> {
+  const provider = PROVIDERS[providerId];
   if (!params.state) return { ok: false, slug: null, message: 'The connection request is missing its security token. Please try again.' };
   const row = await db.oAuthState.findUnique({ where: { stateHash: hashToken(params.state) }, include: { workspace: { select: { slug: true } } } });
-  if (!row || row.provider !== 'meta') return { ok: false, slug: null, message: 'This connection link is invalid. Please try again.' };
+  if (!row || row.provider !== providerId) return { ok: false, slug: null, message: 'This connection link is invalid. Please try again.' };
   const slug = row.workspace.slug;
   if (row.usedAt) return { ok: false, slug, message: 'This connection link was already used. Please start again.' };
   if (row.expiresAt < new Date()) return { ok: false, slug, message: 'The connection took too long and expired. Please try again.' };
@@ -97,16 +109,24 @@ export async function handleMetaCallback(
   }
 
   if (params.error) {
-    return { ok: false, slug, message: params.error === 'access_denied' ? 'Connection cancelled. No channels were added.' : params.errorDescription || 'Facebook did not grant access.' };
+    return {
+      ok: false,
+      slug,
+      message: ['access_denied', 'user_cancelled_authorize', 'user_cancelled_login'].includes(params.error)
+        ? 'Connection cancelled. No channels were added.'
+        : params.errorDescription || `${provider.label} did not grant access.`,
+    };
   }
-  if (!params.code) return { ok: false, slug, message: 'Facebook did not return an authorization code.' };
+  if (!params.code) return { ok: false, slug, message: `${provider.label} did not return an authorization code.` };
 
-  let discovered: Awaited<ReturnType<typeof discoverMetaAccounts>>;
+  let discovered: Discovery;
   try {
-    discovered = integrationMode() === 'MOCK' ? mockDiscovery(row.workspaceId.slice(-6)) : await discoverMetaAccounts(params.code);
+    discovered = mockMode()
+      ? mockDiscovery(row.workspaceId.slice(-6))
+      : await provider.discover(params.code, row.codeVerifierEnc ? decrypt(row.codeVerifierEnc) : undefined);
   } catch (err) {
-    console.error('[meta] discovery failed', err);
-    return { ok: false, slug, message: `Couldn't read your accounts from Meta: ${(err as Error).message}` };
+    console.error(`[${providerId}] discovery failed`, err);
+    return { ok: false, slug, message: `Couldn't read your accounts from ${provider.label}: ${(err as Error).message}` };
   }
   const pending = await db.pendingConnection.create({
     data: {
@@ -114,12 +134,12 @@ export async function handleMetaCallback(
       projectId: row.projectId,
       platform: row.platform,
       userId: user.id,
-      provider: 'meta',
+      provider: providerId,
       payloadEnc: encryptJson(discovered),
       expiresAt: new Date(Date.now() + PENDING_TTL_MS),
     },
   });
-  await audit({ action: 'channel.oauth_completed', actorId: user.id, workspaceId: row.workspaceId, metadata: { found: discovered.accounts.length, declined: discovered.declined } });
+  await audit({ action: 'channel.oauth_completed', actorId: user.id, workspaceId: row.workspaceId, metadata: { provider: providerId, found: discovered.accounts.length, declined: discovered.declined } });
   return { ok: true, slug, pendingId: pending.id };
 }
 
@@ -129,7 +149,7 @@ async function loadPending(ctx: WorkspaceCtx, pendingId: string) {
     include: { project: { select: { id: true, name: true } } },
   });
   if (!p || p.expiresAt < new Date()) throw notFound('Connection request');
-  const data = decryptJson<ReturnType<typeof mockDiscovery>>(p.payloadEnc);
+  const data = decryptJson<Discovery>(p.payloadEnc);
   // Only accounts of the platform this project slot is for.
   return { row: p, data: { ...data, accounts: data.accounts.filter((a) => a.platform === p.platform) } };
 }
@@ -144,9 +164,11 @@ export async function getPendingConnection(ctx: WorkspaceCtx, pendingId: string)
   });
   const current = existing.find((e) => e.projectId === row.projectId && e.status !== 'DISCONNECTED') ?? null;
   return {
-    fbUserName: data.fbUserName,
+    signedInAs: data.signedInAs,
+    providerLabel: PROVIDERS[PLATFORM_PROVIDER[row.platform]].label,
+    accountNoun: ACCOUNT_NOUN[row.platform],
     declined: data.declined,
-    mode: integrationMode(),
+    mode: platformMode(row.platform),
     project: row.project,
     platform: row.platform,
     platformLabel: PLATFORM_INFO[row.platform].label,
@@ -171,7 +193,7 @@ export async function getPendingConnection(ctx: WorkspaceCtx, pendingId: string)
               : null),
         connected: active && !otherProject,
         reconnect: !!prev,
-        missingPermissions: adapterFor({ platform: a.platform, mode: integrationMode() }).capabilities({ scopes: a.scopes }).missing,
+        missingPermissions: adapterFor({ platform: a.platform, mode: platformMode(a.platform) }).capabilities({ scopes: a.scopes, metadata: a.metadata }).missing,
       };
     }),
   };
@@ -191,7 +213,7 @@ export async function confirmPendingConnection(ctx: WorkspaceCtx, pendingId: str
   if (a.blockedReason) throw badRequest(a.blockedReason);
   const label = PLATFORM_INFO[row.platform].label;
 
-  const mode = integrationMode();
+  const mode = platformMode(row.platform);
   const saved = await db.$transaction(async (tx) => {
     await lockProject(tx, ctx.workspace.id, row.projectId);
     const current = await tx.socialAccount.findFirst({ where: { projectId: row.projectId, platform: row.platform, status: { not: 'DISCONNECTED' } } });
@@ -212,6 +234,8 @@ export async function confirmPendingConnection(ctx: WorkspaceCtx, pendingId: str
       avatarUrl: a.avatarUrl,
       accessTokenEnc: encrypt(a.accessToken),
       tokenExpiresAt: a.tokenExpiresAt ? new Date(a.tokenExpiresAt) : null,
+      refreshTokenEnc: a.refreshToken ? encrypt(a.refreshToken) : null,
+      refreshTokenExpiresAt: a.refreshTokenExpiresAt ? new Date(a.refreshTokenExpiresAt) : null,
       scopes: a.scopes,
       status: 'CONNECTED' as const,
       mode,
@@ -261,7 +285,7 @@ export function channelDto(r: ChannelRow) {
     createdAt: r.createdAt.toISOString(),
     connectedBy: r.connectedBy?.name ?? r.connectedBy?.email ?? null,
     scheduledCount: r._count.platformPosts,
-    capabilities: adapterFor(r).capabilities({ scopes: r.scopes }),
+    capabilities: adapterFor(r).capabilities(r),
     pageName: (r.metadata as { pageName?: string } | null)?.pageName ?? null,
   };
 }
@@ -314,7 +338,15 @@ export async function checkChannel(ctx: WorkspaceCtx, id: string) {
 }
 
 export async function runHealthCheck(acc: SocialAccount) {
-  const res = await adapterFor(acc).checkHealth(toAccountRef(acc));
+  let ref;
+  try {
+    ref = await accountRef(acc);
+  } catch (err) {
+    const message = (err as Error).message;
+    await db.socialAccount.update({ where: { id: acc.id }, data: { status: 'NEEDS_REAUTH', lastError: message, lastCheckedAt: new Date() } });
+    return { ok: false as const, status: 'NEEDS_REAUTH' as const, message };
+  }
+  const res = await adapterFor(acc).checkHealth(ref);
   const status = res.ok ? 'CONNECTED' : res.kind === 'auth' ? 'NEEDS_REAUTH' : acc.status === 'NEEDS_REAUTH' ? 'NEEDS_REAUTH' : 'ERROR';
   await db.socialAccount.update({
     where: { id: acc.id },
@@ -323,4 +355,4 @@ export async function runHealthCheck(acc: SocialAccount) {
   return res.ok ? { ok: true as const, status: 'CONNECTED' as const } : { ok: false as const, status, message: res.message };
 }
 
-export type DiscoveredAccountPublic = Omit<DiscoveredAccount, 'accessToken'>;
+export type DiscoveredAccountPublic = Omit<DiscoveredAccount, 'accessToken' | 'refreshToken'>;

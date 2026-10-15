@@ -29,6 +29,7 @@ import { api, errorMessage } from '@/lib/api-client';
 import { formatInTz, fromFloating, toFloating } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { PostListItem } from '@/server/services/posts';
+import type { Platform } from '@/lib/platforms';
 
 type View = 'timeGridWeek' | 'dayGridMonth' | 'timeGridDay';
 const VIEW_LABEL: Record<View, string> = { dayGridMonth: 'Month', timeGridWeek: 'Week', timeGridDay: 'Day' };
@@ -46,7 +47,7 @@ interface Channel {
   name: string;
   username: string | null;
   avatarUrl: string | null;
-  platform: 'INSTAGRAM' | 'FACEBOOK';
+  platform: Platform;
 }
 
 export function PublishCalendar({

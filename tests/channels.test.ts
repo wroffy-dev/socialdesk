@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { db } from '@/server/db';
 import { decrypt } from '@/server/crypto';
-import { confirmPendingConnection, disconnectChannel, getPendingConnection, handleMetaCallback, listChannels, startMetaConnect } from '@/server/services/channels';
+import { confirmPendingConnection, disconnectChannel, getPendingConnection, handleCallback, listChannels, startConnect } from '@/server/services/channels';
+import { PLATFORM_PROVIDER, type Platform } from '@/lib/platforms';
 import { createPost } from '@/server/services/posts';
 import { createProject } from '@/server/services/projects';
 import { addMember, makeUser, makeWorkspace } from './helpers/factories';
@@ -12,11 +13,11 @@ async function firstProject(ctx: Ctx) {
   return db.project.findFirstOrThrow({ where: { workspaceId: ctx.workspace.id }, orderBy: { createdAt: 'asc' } });
 }
 
-async function connectMock(ctx: Ctx, projectId?: string, platform: 'INSTAGRAM' | 'FACEBOOK' = 'FACEBOOK') {
+async function connectMock(ctx: Ctx, projectId?: string, platform: Platform = 'FACEBOOK') {
   const pid = projectId ?? (await firstProject(ctx)).id;
-  const { state, redirectUrl } = await startMetaConnect(ctx, pid, platform);
+  const { state, redirectUrl } = await startConnect(ctx, pid, platform);
   expect(redirectUrl).toContain('/api/oauth/meta/callback?code=mock');
-  const res = await handleMetaCallback(ctx.user, { code: 'mock', state }, state);
+  const res = await handleCallback(PLATFORM_PROVIDER[platform], ctx.user, { code: 'mock', state }, state);
   if (!res.ok) throw new Error(res.message);
   return res.pendingId;
 }
@@ -108,23 +109,23 @@ describe('channel connection (mock Meta)', () => {
   it('rejects state mismatch, reuse, expiry and other users', async () => {
     const { ctx } = await makeWorkspace('State Co');
     const project = await firstProject(ctx);
-    const { state } = await startMetaConnect(ctx, project.id, 'FACEBOOK');
-    expect((await handleMetaCallback(ctx.user, { code: 'mock', state }, 'different-cookie')).ok).toBe(false);
+    const { state } = await startConnect(ctx, project.id, 'FACEBOOK');
+    expect((await handleCallback('meta', ctx.user, { code: 'mock', state }, 'different-cookie')).ok).toBe(false);
     const other = await makeUser();
-    expect(await handleMetaCallback(other, { code: 'mock', state }, state)).toMatchObject({ ok: false, message: expect.stringContaining('different user') });
-    expect((await handleMetaCallback(ctx.user, { code: 'mock', state }, state)).ok).toBe(true);
-    expect(await handleMetaCallback(ctx.user, { code: 'mock', state }, state)).toMatchObject({ ok: false, message: expect.stringContaining('already used') });
+    expect(await handleCallback('meta', other, { code: 'mock', state }, state)).toMatchObject({ ok: false, message: expect.stringContaining('different user') });
+    expect((await handleCallback('meta', ctx.user, { code: 'mock', state }, state)).ok).toBe(true);
+    expect(await handleCallback('meta', ctx.user, { code: 'mock', state }, state)).toMatchObject({ ok: false, message: expect.stringContaining('already used') });
 
-    const { state: s2 } = await startMetaConnect(ctx, project.id, 'INSTAGRAM');
+    const { state: s2 } = await startConnect(ctx, project.id, 'INSTAGRAM');
     await db.oAuthState.updateMany({ where: { workspaceId: ctx.workspace.id, usedAt: null }, data: { expiresAt: new Date(Date.now() - 1000) } });
-    expect(await handleMetaCallback(ctx.user, { code: 'mock', state: s2 }, s2)).toMatchObject({ ok: false, message: expect.stringContaining('expired') });
-    expect((await handleMetaCallback(ctx.user, { code: 'mock', state: 'forged' }, 'forged')).ok).toBe(false);
+    expect(await handleCallback('meta', ctx.user, { code: 'mock', state: s2 }, s2)).toMatchObject({ ok: false, message: expect.stringContaining('expired') });
+    expect((await handleCallback('meta', ctx.user, { code: 'mock', state: 'forged' }, 'forged')).ok).toBe(false);
   });
 
   it('reports a cancelled Facebook dialog without connecting anything', async () => {
     const { ctx, ws } = await makeWorkspace('Cancel Co');
-    const { state } = await startMetaConnect(ctx, (await firstProject(ctx)).id, 'INSTAGRAM');
-    const res = await handleMetaCallback(ctx.user, { state, error: 'access_denied' }, state);
+    const { state } = await startConnect(ctx, (await firstProject(ctx)).id, 'INSTAGRAM');
+    const res = await handleCallback('meta', ctx.user, { state, error: 'access_denied' }, state);
     expect(res).toMatchObject({ ok: false, message: expect.stringContaining('cancelled') });
     expect(await db.socialAccount.count({ where: { workspaceId: ws.id } })).toBe(0);
   });
@@ -133,14 +134,14 @@ describe('channel connection (mock Meta)', () => {
     const { ctx, ws } = await makeWorkspace('Limits Co');
     const project = await firstProject(ctx);
     const publisher = await addMember(ws.id, 'PUBLISHER');
-    await expect(startMetaConnect(publisher, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 403 });
-    await expect(startMetaConnect({ ...ctx, user: { ...ctx.user, emailVerified: null } }, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 403 });
+    await expect(startConnect(publisher, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 403 });
+    await expect(startConnect({ ...ctx, user: { ...ctx.user, emailVerified: null } }, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 403 });
 
     const pendingId = await connectMock(ctx, project.id);
     const pending = await getPendingConnection(ctx, pendingId);
     const other = await makeWorkspace('Other Co');
     // Another workspace can't target this project or use this pending selection.
-    await expect(startMetaConnect(other.ctx, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 404 });
+    await expect(startConnect(other.ctx, project.id, 'FACEBOOK')).rejects.toMatchObject({ status: 404 });
     await expect(getPendingConnection(other.ctx, pendingId)).rejects.toMatchObject({ status: 404 });
     await expect(confirmPendingConnection(other.ctx, pendingId, pending.accounts[0]!.key)).rejects.toMatchObject({ status: 404 });
   });

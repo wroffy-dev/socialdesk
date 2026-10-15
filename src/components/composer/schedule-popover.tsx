@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock, ListOrdered, Send } from 'lucide-react';
+import { CalendarClock, Clock, ListOrdered, Send, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { TimezoneSelect } from '@/components/workspace/timezone-select';
 import { formatInTz, formatTime12, utcToWall, zonedToUtc } from '@/lib/time';
+import { cn } from '@/lib/utils';
 import { MiniCalendar } from './mini-calendar';
 import type { ScheduleAction } from './types';
 
@@ -24,9 +25,12 @@ export function SchedulePopover({
   busy,
   onSubmit,
   label = 'Schedule',
+  suggestions = [],
 }: {
   initial: ScheduleValue;
   nextQueueSlot: string | null;
+  /** Best times from the workspace's own results (next occurrence of each). */
+  suggestions?: { label: string; at: string }[];
   disabled?: boolean;
   busy?: boolean;
   onSubmit: (action: ScheduleAction) => void;
@@ -48,6 +52,30 @@ export function SchedulePopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="w-[300px] p-4">
+        {suggestions.length > 0 && (
+          <div className="mb-3 flex flex-col gap-1.5">
+            <span className="flex items-center gap-1 text-xs text-muted">
+              <Sparkles className="size-3.5" /> Your best times
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((sg) => {
+                const w = utcToWall(sg.at, value.tz);
+                const on = w.date === value.date && w.time === value.time;
+                return (
+                  <button
+                    key={sg.at}
+                    type="button"
+                    onClick={() => setValue((v) => ({ ...v, date: w.date, time: w.time }))}
+                    className={cn('rounded-full border px-2.5 py-0.5 text-xs', on ? 'border-accent-ink bg-accent-soft text-accent-ink' : 'border-line hover:bg-subtle')}
+                    title={formatInTz(sg.at, value.tz, { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  >
+                    {sg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <MiniCalendar value={value.date} min={today} onChange={(date) => setValue((v) => ({ ...v, date }))} />
         <div className="mt-3 flex flex-col gap-2">
           <label className="flex items-center gap-2 text-[13px]">

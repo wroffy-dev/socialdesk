@@ -109,7 +109,14 @@ export async function processPublish(platformPostId: string, opts: { workerId: s
       return fail(new AdapterError(authProblem ? 'auth' : 'permanent', blocking[0]!.message, authProblem ? 'account_unavailable' : 'validation'));
     }
 
-    const { input, mode } = await buildPublishInput(version.id);
+    let built: Awaited<ReturnType<typeof buildPublishInput>>;
+    try {
+      // Also refreshes short-lived tokens (X, Google, LinkedIn); a revoked token fails as auth.
+      built = await buildPublishInput(version.id);
+    } catch (err) {
+      return fail(err instanceof AdapterError ? err : new AdapterError('transient', (err as Error)?.message ?? 'Could not prepare the post.', 'prepare'));
+    }
+    const { input, mode } = built;
     if (mode === 'MOCK' && env().NODE_ENV === 'production' && process.env.ALLOW_MOCK_IN_PRODUCTION !== 'true') {
       return fail(new AdapterError('permanent', 'Mock channels cannot publish in production.', 'mock_in_production'));
     }

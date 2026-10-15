@@ -38,6 +38,20 @@ const schema = z
     META_GRAPH_VERSION: z.string().default('v23.0'),
     META_REDIRECT_URI: z.string().url().optional(),
 
+    /** X (Twitter) OAuth 2.0 app. Optional: X is offered once these are set (or in mock mode). */
+    X_CLIENT_ID: z.string().optional(),
+    X_CLIENT_SECRET: z.string().optional(),
+    /** Google OAuth client with the YouTube Data API v3 enabled. */
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    /** LinkedIn app with "Share on LinkedIn" (+ "Community Management API" for pages). */
+    LINKEDIN_CLIENT_ID: z.string().optional(),
+    LINKEDIN_CLIENT_SECRET: z.string().optional(),
+    /** Monthly API version (YYYYMM). LinkedIn supports each version for about a year. */
+    LINKEDIN_API_VERSION: z.string().regex(/^\d{6}$/).default('202608'),
+    /** Request organization (page) permissions; needs the Community Management API product. */
+    LINKEDIN_PAGES: bool,
+
     BILLING_ENABLED: bool,
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),

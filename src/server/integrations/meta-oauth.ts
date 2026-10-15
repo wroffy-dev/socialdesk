@@ -1,6 +1,9 @@
 import { env } from '../env';
 import { AdapterError } from '../adapters/types';
 import { graphClient } from '../adapters/registry';
+import type { DiscoveredAccount, OAuthProvider } from './types';
+
+export type { DiscoveredAccount } from './types';
 
 /** Permissions requested from Meta. Each must be approved in App Review before going live. */
 export const META_SCOPES = [
@@ -32,21 +35,6 @@ export function metaAuthUrl(state: string) {
   // Lets users re-grant permissions they previously declined when reconnecting.
   url.searchParams.set('auth_type', 'rerequest');
   return url.toString();
-}
-
-export interface DiscoveredAccount {
-  key: string;
-  platform: 'INSTAGRAM' | 'FACEBOOK';
-  externalId: string;
-  name: string;
-  username: string | null;
-  avatarUrl: string | null;
-  accessToken: string;
-  tokenExpiresAt: string | null;
-  scopes: string[];
-  metadata: Record<string, unknown>;
-  /** Reasons this account can't be connected (shown, not selectable). */
-  blockedReason: string | null;
 }
 
 interface PageRow {
@@ -134,24 +122,18 @@ export async function discoverMetaAccounts(code: string): Promise<{ fbUserId: st
   return { fbUserId: me.id, fbUserName: me.name, accounts, declined };
 }
 
-/** Fake discovery used when META_MODE=mock. Never contacts Meta. */
-export function mockDiscovery(seed: string): { fbUserId: string; fbUserName: string; accounts: DiscoveredAccount[]; declined: string[] } {
-  const mk = (platform: 'INSTAGRAM' | 'FACEBOOK', n: number): DiscoveredAccount => ({
-    key: `${platform}:mock-${platform.toLowerCase()}-${seed}-${n}`,
-    platform,
-    externalId: `mock-${platform.toLowerCase()}-${seed}-${n}`,
-    name: platform === 'INSTAGRAM' ? `Mock Instagram ${n}` : `Mock Facebook Page ${n}`,
-    username: platform === 'INSTAGRAM' ? `mock_ig_${n}` : null,
-    avatarUrl: null,
-    accessToken: 'mock-token',
-    tokenExpiresAt: null,
-    scopes: [],
-    metadata: { mock: true },
-    blockedReason: null,
-  });
-  return { fbUserId: 'mock-user', fbUserName: 'Mock User', accounts: [mk('FACEBOOK', 1), mk('INSTAGRAM', 1), mk('FACEBOOK', 2)], declined: [] };
-}
-
 export function isAuthError(err: unknown) {
   return err instanceof AdapterError && err.kind === 'auth';
 }
+
+export const metaProvider: OAuthProvider = {
+  id: 'meta',
+  label: 'Facebook',
+  usesPkce: false,
+  configured: () => !!env().META_APP_ID && !!env().META_APP_SECRET,
+  authUrl: (state) => metaAuthUrl(state),
+  discover: async (code) => {
+    const d = await discoverMetaAccounts(code);
+    return { signedInAs: d.fbUserName, accounts: d.accounts, declined: d.declined };
+  },
+};

@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { decrypt } from '../crypto';
+import { accountRef } from '../integrations/tokens';
 import { conflict, notFound } from '../errors';
 import { audit } from '../audit';
 import { assertCan, type WorkspaceCtx } from '../auth/ctx';
@@ -31,17 +31,7 @@ export async function postFirstComment(versionId: string): Promise<FirstCommentO
 
   try {
     const adapter = adapterFor({ platform: v.platform, mode: v.socialAccount.mode });
-    const res = await adapter.postComment(
-      {
-        id: v.socialAccount.id,
-        externalId: v.socialAccount.externalId,
-        accessToken: decrypt(v.socialAccount.accessTokenEnc),
-        metadata: (v.socialAccount.metadata ?? {}) as Record<string, unknown>,
-        scopes: v.socialAccount.scopes,
-      },
-      v.externalId,
-      text,
-    );
+    const res = await adapter.postComment(await accountRef(v.socialAccount), v.externalId, text);
     await db.platformPost.update({ where: { id: v.id }, data: { firstCommentId: res.externalId, firstCommentError: null } });
     return 'posted';
   } catch (err) {

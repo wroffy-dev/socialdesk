@@ -42,9 +42,10 @@ import { StatusBadge } from '@/components/posts/status-badge';
 import { useConfirm } from '@/components/ui/confirm';
 import { useConnectDialog } from '@/components/channels/connect-dialog';
 import { api, ApiError, errorMessage } from '@/lib/api-client';
-import { charCount, COMING_SOON, countHashtags, errorsOnly, PLATFORM_INFO, validateVersion, type Issue } from '@/lib/platforms';
+import { charCount, COMING_SOON, countHashtags, errorsOnly, PLATFORM_INFO, validateVersion, xLength, xText, type Issue, type Platform } from '@/lib/platforms';
 import { DEFAULT_OPTIONS, type VersionOptions } from '@/lib/post-options';
 import { ChannelOptions } from './channel-options';
+import { slotLabel, useBestTimes } from '@/components/insights/best-time-card';
 import { formatAgo, formatDateTime, utcToWall } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PostPreview } from './preview';
@@ -53,6 +54,13 @@ import type { ComposerChannel, ComposerProject, ComposerState, ComposerTag, Over
 
 const EMOJI = ['😀', '😍', '🎉', '🔥', '✨', '🙌', '👏', '💚', '📸', '🚀', '✅', '💡', '📣', '🎁', '☕', '🌿', '👉', '⭐'];
 const SHARED = 'shared';
+const OPTIONS_HINT: Record<Platform, string> = {
+  INSTAGRAM: 'Story, collaborators, tags, first comment',
+  FACEBOOK: 'First comment',
+  X: 'Reply',
+  LINKEDIN: 'First comment',
+  YOUTUBE: 'Title, visibility, made for kids, tags',
+};
 const AUTOSAVE_MS = 2500;
 
 /** Connected channels of a project, Instagram first. */
@@ -182,6 +190,8 @@ export function Composer({
     return () => window.clearInterval(id);
   }, []);
 
+  const bestTimes = useBestTimes(workspace.id, state.selected);
+  const suggestions = useMemo(() => (bestTimes?.top ?? []).map((t) => ({ label: slotLabel(t), at: t.nextAt })), [bestTimes]);
   const currentProject = projects.find((p) => p.id === state.projectId) ?? null;
   const visibleChannels = useMemo(() => projectChannels(channels, state.projectId), [channels, state.projectId]);
   const selectedChannels = useMemo(() => channels.filter((c) => state.selected.includes(c.id)), [channels, state.selected]);
@@ -392,7 +402,8 @@ export function Composer({
   const previewContent = previewChannel ? effective(previewChannel.id) : null;
   const activeIssues = active ? [...(issuesByChannel[active.id] ?? []), ...(serverIssues[active.id] ?? [])] : [];
   const charLimit = active ? PLATFORM_INFO[active.platform].maxChars : Math.min(...selectedChannels.map((c) => PLATFORM_INFO[c.platform].maxChars), 63206);
-  const chars = charCount(current.caption);
+  // X counts links as 23 and some characters as 2; the link field is appended to the post.
+  const chars = active?.platform === 'X' ? xLength(xText(current.caption, current.linkUrl)) : charCount(current.caption);
   const hashtags = countHashtags(current.caption);
   const savedLabel = saving === 'auto' ? 'Saving…' : dirty ? 'Unsaved changes' : savedAt ? `Saved · ${formatAgo(savedAt)}` : '';
 
@@ -642,14 +653,14 @@ export function Composer({
           </div>
 
           {/* Link */}
-          {(!active || active.platform === 'FACEBOOK' || current.linkUrl) && (
+          {(!active || active.platform !== 'INSTAGRAM' || current.linkUrl) && (
             <label className="flex items-center gap-2">
               <Link2 className="size-4 shrink-0 text-muted" />
               <Input
                 value={current.linkUrl ?? ''}
                 onChange={(e) => setCurrent({ linkUrl: e.target.value || null })}
                 readOnly={!canEditCurrent || locked}
-                placeholder="Link (optional) — shown as a link preview on Facebook"
+                placeholder="Link (optional) — shown as a link preview where the platform supports it"
                 aria-label="Link"
                 className="h-8"
               />
@@ -675,17 +686,18 @@ export function Composer({
                     c.platform === 'INSTAGRAM' && o.igType === 'story' && 'Story',
                     o.collaborators.length > 0 && `${o.collaborators.length} collaborator${o.collaborators.length > 1 ? 's' : ''}`,
                     o.userTags.length > 0 && `${o.userTags.length} tagged`,
-                    o.firstComment.trim() && 'first comment',
+                    c.platform === 'YOUTUBE' && o.ytPrivacy !== 'public' && o.ytPrivacy,
+                    o.firstComment.trim() && (c.platform === 'X' ? 'reply' : 'first comment'),
                   ].filter(Boolean);
                   const e = effective(c.id);
                   return (
                     <details key={c.id} className="group rounded-lg border border-line">
                       <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[13px]">
                         <PlatformIcon platform={c.platform} size={16} />
-                        <span className="font-medium">{c.platform === 'INSTAGRAM' ? 'Instagram options' : 'Facebook options'}</span>
+                        <span className="font-medium">{PLATFORM_INFO[c.platform].label} options</span>
                         <span className="truncate text-muted">· {c.username ?? c.name}</span>
                         <span className="ml-auto truncate text-xs text-muted">
-                          {summary.length ? summary.join(' · ') : c.platform === 'INSTAGRAM' ? 'Story, collaborators, tags, first comment' : 'First comment'}
+                          {summary.length ? summary.join(' · ') : OPTIONS_HINT[c.platform]}
                         </span>
                       </summary>
                       <div className="border-t border-line p-2">
@@ -794,6 +806,7 @@ export function Composer({
                     nextQueueSlot={nextQueueSlot}
                     disabled={blockers.length > 0 || !!saving}
                     onSubmit={submit}
+                    suggestions={suggestions}
                   />
                 )}
                 <Button variant="primary" onClick={() => submit({ type: 'save' })} disabled={blockers.length > 0 || !dirty} loading={saving === 'manual' || saving === 'publish'}>
@@ -808,13 +821,27 @@ export function Composer({
                 {canPublish ? (
                   defaultMode === 'queue' ? (
                     <>
-                      <SchedulePopover label="Other options" initial={scheduleInitial} nextQueueSlot={nextQueueSlot} disabled={blockers.length > 0 || !!saving} onSubmit={submit} />
+                      <SchedulePopover
+                        label="Other options"
+                        initial={scheduleInitial}
+                        nextQueueSlot={nextQueueSlot}
+                        disabled={blockers.length > 0 || !!saving}
+                        onSubmit={submit}
+                        suggestions={suggestions}
+                      />
                       <Button variant="primary" onClick={() => submit({ type: 'queue' })} disabled={blockers.length > 0 || !nextQueueSlot} loading={saving === 'publish'}>
                         Add to queue
                       </Button>
                     </>
                   ) : (
-                    <SchedulePopover initial={scheduleInitial} nextQueueSlot={nextQueueSlot} disabled={blockers.length > 0 || !!saving} busy={saving === 'publish'} onSubmit={submit} />
+                    <SchedulePopover
+                      initial={scheduleInitial}
+                      nextQueueSlot={nextQueueSlot}
+                      disabled={blockers.length > 0 || !!saving}
+                      busy={saving === 'publish'}
+                      onSubmit={submit}
+                      suggestions={suggestions}
+                    />
                   )
                 ) : (
                   <span className="text-xs text-muted">Your role can save drafts only.</span>

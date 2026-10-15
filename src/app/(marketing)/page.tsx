@@ -13,7 +13,7 @@ export default async function Landing() {
       <section className="mx-auto max-w-6xl px-4 pb-16 pt-16 sm:px-6 sm:pt-24">
         <div className="mx-auto max-w-3xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[13px] text-muted">
-            <PlatformIcon platform="INSTAGRAM" size={16} /> <PlatformIcon platform="FACEBOOK" size={16} /> Instagram & Facebook publishing
+            <PlatformIcon platform="INSTAGRAM" size={16} /> <PlatformIcon platform="FACEBOOK" size={16} /> <PlatformIcon platform="X" size={16} /> <PlatformIcon platform="LINKEDIN" size={16} /> <PlatformIcon platform="YOUTUBE" size={16} /> Instagram, Facebook, X, LinkedIn & YouTube
           </span>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">Plan, schedule and publish your social media in one calm place.</h1>
           <p className="mx-auto mt-5 max-w-xl text-lg text-muted">A clean calendar, a queue that fills itself, and publishing you can trust. Built for small teams and agencies.</p>
@@ -51,7 +51,7 @@ export default async function Landing() {
       </section>
       <section className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
         <h2 className="text-2xl font-semibold">Ready when you are</h2>
-        <p className="mt-2 text-muted">Create a workspace, connect your Instagram professional account or Facebook Page, and schedule your first post in minutes.</p>
+        <p className="mt-2 text-muted">Create a workspace, connect Instagram, Facebook, X, LinkedIn or YouTube, and schedule your first post in minutes.</p>
         <Button asChild variant="primary" size="lg" className="mt-6">
           <Link href="/signup">Create your free account</Link>
         </Button>

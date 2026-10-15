@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { PLATFORM_INFO } from '@/lib/platforms';
 import { AdapterError, type AccountRef, type Capabilities, type Platform, type PublishHooks, type PublishInput, type PublishResult, type SocialAdapter, type VerifyOutcome } from './types';
 
 /**
@@ -19,9 +20,9 @@ export class MockAdapter implements SocialAdapter {
 
   constructor(readonly platform: Platform) {}
 
-  capabilities(_account: Pick<AccountRef, 'scopes'>): Capabilities {
+  capabilities(_account: { scopes: string[] }): Capabilities {
     return {
-      formats: this.platform === 'INSTAGRAM' ? ['FEED', 'CAROUSEL', 'REEL', 'STORY'] : ['TEXT', 'LINK', 'FEED', 'REEL'],
+      formats: PLATFORM_INFO[this.platform].formats,
       publish: true,
       analytics: false,
       comments: false,
@@ -36,6 +37,7 @@ export class MockAdapter implements SocialAdapter {
     const already = MockAdapter.published.get(input.idempotencyKey);
     if (already) return already;
     if (this.platform === 'INSTAGRAM' && input.media.length === 0) throw new AdapterError('permanent', 'Instagram posts need at least one image or video.', 'ig_no_media');
+    if (this.platform === 'YOUTUBE' && input.media[0]?.kind !== 'VIDEO') throw new AdapterError('permanent', 'YouTube needs exactly one video.', 'yt_no_video');
     if (input.caption.includes('#mock-fail')) throw new AdapterError('permanent', 'Mock platform rejected this post.', 'mock_permanent');
     if (input.caption.includes('#mock-authfail')) throw new AdapterError('auth', 'Mock token was revoked.', 'mock_auth');
     if (input.caption.includes('#mock-flaky') && !MockAdapter.flakySeen.has(input.idempotencyKey)) {

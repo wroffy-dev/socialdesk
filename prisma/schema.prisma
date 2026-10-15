@@ -392,6 +392,9 @@ model UsageRecord {
 enum SocialPlatform {
   INSTAGRAM
   FACEBOOK
+  X
+  LINKEDIN
+  YOUTUBE
 }
 
 enum SocialAccountStatus {
@@ -431,28 +434,31 @@ model Project {
 }
 
 model SocialAccount {
-  id             String              @id @default(cuid())
-  workspaceId    String
+  id                    String              @id @default(cuid())
+  workspaceId           String
   /// The project this account is linked to. At most one active account per platform per project.
-  projectId      String
-  platform       SocialPlatform
-  externalId     String
-  name           String
-  username       String?
-  avatarUrl      String?
+  projectId             String
+  platform              SocialPlatform
+  externalId            String
+  name                  String
+  username              String?
+  avatarUrl             String?
   /// AES-256-GCM encrypted access token (see src/server/crypto.ts).
-  accessTokenEnc String              @db.Text
-  tokenExpiresAt DateTime?
-  scopes         String[]
-  status         SocialAccountStatus @default(CONNECTED)
-  mode           IntegrationMode     @default(DEVELOPMENT)
-  lastError      String?
-  lastCheckedAt  DateTime?
+  accessTokenEnc        String              @db.Text
+  tokenExpiresAt        DateTime?
+  /// AES-256-GCM encrypted refresh token (X, Google, LinkedIn); null for Meta.
+  refreshTokenEnc       String?             @db.Text
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+  status                SocialAccountStatus @default(CONNECTED)
+  mode                  IntegrationMode     @default(DEVELOPMENT)
+  lastError             String?
+  lastCheckedAt         DateTime?
   /// Platform-specific data, e.g. the Facebook Page id behind an Instagram account.
-  metadata       Json?
-  connectedById  String?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  metadata              Json?
+  connectedById         String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
   workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -536,6 +542,10 @@ enum PostFormat {
   CAROUSEL
   TEXT
   LINK
+  /// YouTube video, or a video post on LinkedIn or X.
+  VIDEO
+  /// YouTube Short (vertical, up to 3 minutes).
+  SHORT
 }
 
 /// One channel's version of a campaign, validated and published independently.
@@ -718,16 +728,18 @@ model QueueSlot {
 
 /// Short-lived OAuth state, bound to the user and workspace that started the flow.
 model OAuthState {
-  id          String         @id @default(cuid())
-  stateHash   String         @unique
-  workspaceId String
-  projectId   String
-  platform    SocialPlatform
-  userId      String
-  provider    String
-  expiresAt   DateTime
-  usedAt      DateTime?
-  createdAt   DateTime       @default(now())
+  id              String         @id @default(cuid())
+  stateHash       String         @unique
+  workspaceId     String
+  projectId       String
+  platform        SocialPlatform
+  userId          String
+  provider        String
+  /// Encrypted PKCE code verifier (X uses PKCE).
+  codeVerifierEnc String?
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime       @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

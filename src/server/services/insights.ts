@@ -75,7 +75,7 @@ export async function getInsights(ctx: WorkspaceCtx, raw: unknown) {
 
   const accounts = await db.socialAccount.findMany({
     where: { workspaceId: wsId, status: { not: 'DISCONNECTED' }, ...(q.channels.length ? { id: { in: q.channels } } : {}) },
-    select: { id: true, name: true, username: true, platform: true, avatarUrl: true, mode: true, scopes: true },
+    select: { id: true, name: true, username: true, platform: true, avatarUrl: true, mode: true, scopes: true, metadata: true },
   });
   const accountIds = accounts.map((a) => a.id);
 
@@ -137,7 +137,7 @@ export async function getInsights(ctx: WorkspaceCtx, raw: unknown) {
     const shares = sum(metrics.map((m) => m.shares));
     const saves = sum(metrics.map((m) => m.saves));
     const postReach = sum(metrics.map((m) => m.reach));
-    const caps = adapterFor(a).capabilities({ scopes: a.scopes });
+    const caps = adapterFor(a).capabilities(a);
     const notes: string[] = [];
     if (a.mode === 'MOCK') notes.push('Mock channel: no analytics');
     else if (!caps.analytics) notes.push('Analytics permission not granted');

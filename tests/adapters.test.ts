@@ -25,8 +25,9 @@ const input = (over: Partial<PublishInput>): PublishInput => ({
   options: DEFAULT_OPTIONS,
   ...over,
 });
-const img = (id: string) => ({ id, kind: 'IMAGE' as const, mimeType: 'image/jpeg', url: `https://app.test/m/${id}`, durationSec: null });
-const vid = (id: string) => ({ id, kind: 'VIDEO' as const, mimeType: 'video/mp4', url: `https://app.test/m/${id}`, durationSec: 12 });
+const bytes = async () => Buffer.alloc(0);
+const img = (id: string) => ({ id, kind: 'IMAGE' as const, mimeType: 'image/jpeg', url: `https://app.test/m/${id}`, durationSec: null, sizeBytes: 0, read: bytes });
+const vid = (id: string) => ({ id, kind: 'VIDEO' as const, mimeType: 'video/mp4', url: `https://app.test/m/${id}`, durationSec: 12, sizeBytes: 0, read: bytes });
 
 describe('Graph error classification', () => {
   it('maps codes to retry behaviour', () => {

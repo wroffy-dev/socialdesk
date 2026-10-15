@@ -3,6 +3,7 @@ import { createWorkspace } from '@/server/services/workspaces';
 import { loadCtx, type WorkspaceCtx } from '@/server/auth/ctx';
 import type { Role } from '@/lib/permissions';
 import { encrypt } from '@/server/crypto';
+import type { Platform } from '@/lib/platforms';
 
 let seq = 0;
 const uid = () => `${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -32,7 +33,7 @@ export async function addMember(workspaceId: string, role: Role): Promise<Worksp
 }
 
 /** A project with a free slot for `platform` (created directly, outside plan limits, if needed). */
-export async function projectWithSlot(workspaceId: string, platform: 'INSTAGRAM' | 'FACEBOOK') {
+export async function projectWithSlot(workspaceId: string, platform: Platform) {
   const projects = await db.project.findMany({
     where: { workspaceId },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -43,15 +44,15 @@ export async function projectWithSlot(workspaceId: string, platform: 'INSTAGRAM'
 }
 
 /** A mock channel in the first project with a free slot for its platform. */
-export async function makeChannel(workspaceId: string, platform: 'INSTAGRAM' | 'FACEBOOK' = 'FACEBOOK', projectId?: string) {
+export async function makeChannel(workspaceId: string, platform: Platform = 'FACEBOOK', projectId?: string) {
   return db.socialAccount.create({
     data: {
       workspaceId,
       projectId: projectId ?? (await projectWithSlot(workspaceId, platform)).id,
       platform,
       externalId: `ext-${uid()}`,
-      name: `${platform === 'INSTAGRAM' ? 'IG' : 'FB'} channel`,
-      username: platform === 'INSTAGRAM' ? `ig_${uid()}` : null,
+      name: `${platform} channel`,
+      username: platform === 'FACEBOOK' ? null : `${platform.toLowerCase()}_${uid()}`,
       accessTokenEnc: encrypt('mock-token'),
       mode: 'MOCK',
       scopes: [],

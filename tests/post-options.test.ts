@@ -65,7 +65,15 @@ describe('post options: rules', () => {
 describe('post options: Graph API requests', () => {
   const account = { id: 'acc', externalId: '1789', accessToken: 'tok', metadata: {}, scopes: ['instagram_basic', 'instagram_content_publish', 'instagram_manage_comments'] };
   const hooks = { saveState: async () => {}, beforeFinalCall: async () => {} };
-  const pub = (url: string, kind: 'IMAGE' | 'VIDEO', id: string) => ({ id, kind, mimeType: kind === 'IMAGE' ? 'image/jpeg' : 'video/mp4', url, durationSec: kind === 'VIDEO' ? 20 : null });
+  const pub = (url: string, kind: 'IMAGE' | 'VIDEO', id: string) => ({
+    id,
+    kind,
+    mimeType: kind === 'IMAGE' ? 'image/jpeg' : 'video/mp4',
+    url,
+    durationSec: kind === 'VIDEO' ? 20 : null,
+    sizeBytes: 0,
+    read: async () => Buffer.alloc(0),
+  });
   const base = (over: Partial<PublishInput>): PublishInput => ({
     account,
     format: 'FEED',

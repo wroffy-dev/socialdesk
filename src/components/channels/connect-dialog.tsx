@@ -6,11 +6,10 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, Dia
 import { NativeSelect } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlatformIcon } from '@/components/platform-icon';
-import { COMING_SOON } from '@/lib/platforms';
+import { COMING_SOON, PLATFORM_INFO, type Platform } from '@/lib/platforms';
 import { useShell } from '@/components/shell/shell-context';
 import { Badge } from '@/components/ui/badge';
 
-type Platform = 'INSTAGRAM' | 'FACEBOOK';
 interface OpenOptions {
   projectId?: string;
   platform?: Platform;
@@ -36,34 +35,34 @@ export function ConnectDialogProvider({ children }: { children: React.ReactNode 
 
 export const useConnectDialog = () => useContext(Ctx);
 
-const OPTIONS = [
-  {
-    platform: 'INSTAGRAM' as const,
-    label: 'Instagram',
-    description: 'A professional (Business or Creator) account linked to a Facebook Page.',
-  },
-  { platform: 'FACEBOOK' as const, label: 'Facebook Page', description: 'A Page you manage. Personal profiles are not supported by Meta.' },
+/** What each platform connects, shown under its name. */
+export const CONNECT_OPTIONS: { platform: Platform; label: string; description: string }[] = [
+  { platform: 'INSTAGRAM', label: 'Instagram', description: 'A professional (Business or Creator) account linked to a Facebook Page.' },
+  { platform: 'FACEBOOK', label: 'Facebook Page', description: 'A Page you manage. Personal profiles are not supported by Meta.' },
+  { platform: 'X', label: 'X', description: 'An X (Twitter) account. Text, images and video.' },
+  { platform: 'LINKEDIN', label: 'LinkedIn', description: 'Your LinkedIn profile, or a company page you administer.' },
+  { platform: 'YOUTUBE', label: 'YouTube', description: 'A YouTube channel. Videos and Shorts.' },
 ];
 
-/** Connect URL for one project slot. Both platforms are authorised through Facebook Login. */
+/** Connect URL for one project slot; it redirects to the platform's own sign-in. */
 export function connectHref(workspaceId: string, projectId: string, platform: Platform) {
-  return `/api/w/${workspaceId}/channels/connect/meta?project=${encodeURIComponent(projectId)}&platform=${platform}`;
+  return `/api/w/${workspaceId}/channels/connect/start?project=${encodeURIComponent(projectId)}&platform=${platform}`;
 }
 
 /**
- * Picks the project and platform, then starts Meta's official OAuth flow. Each project holds one
- * Instagram account and one Facebook Page.
+ * Picks the project and platform, then starts that platform's official OAuth flow. Each project
+ * holds one account per platform.
  */
 export function ConnectChannelDialog() {
   const { isOpen, options, close } = useConnectDialog();
-  const { workspace, user, projects } = useShell();
-  const firstWithSpace = projects.find((p) => !p.instagram || !p.facebook) ?? projects[0];
+  const { workspace, user, projects, availablePlatforms } = useShell();
+  const firstWithSpace = projects.find((p) => Object.values(p.slots).some((c) => !c)) ?? projects[0];
   const [projectId, setProjectId] = useState(options.projectId ?? firstWithSpace?.id ?? '');
   useEffect(() => {
     if (isOpen) setProjectId(options.projectId ?? firstWithSpace?.id ?? '');
   }, [isOpen, options.projectId, firstWithSpace?.id]);
   const project = projects.find((p) => p.id === projectId);
-  const shown = options.platform ? OPTIONS.filter((o) => o.platform === options.platform) : OPTIONS;
+  const shown = options.platform ? CONNECT_OPTIONS.filter((o) => o.platform === options.platform) : CONNECT_OPTIONS;
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && close()}>
@@ -71,7 +70,7 @@ export function ConnectChannelDialog() {
         <DialogHeader>
           <DialogTitle>Connect a channel</DialogTitle>
           <DialogDescription>
-            Each project links one Instagram account and one Facebook Page. You&apos;ll sign in with Facebook to grant access.
+            Each project links one account per platform. You&apos;ll sign in on the platform itself to grant access.
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="pb-5">
@@ -92,8 +91,9 @@ export function ConnectChannelDialog() {
           </div>
           <div className="flex flex-col gap-2">
             {shown.map((o) => {
-              const linked = o.platform === 'INSTAGRAM' ? project?.instagram : project?.facebook;
-              const enabled = user.emailVerified && !!project;
+              const linked = project?.slots[o.platform];
+              const available = availablePlatforms[o.platform];
+              const enabled = user.emailVerified && !!project && available;
               return (
                 <a
                   key={o.platform}
@@ -105,7 +105,11 @@ export function ConnectChannelDialog() {
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium">{o.label}</span>
                     <span className="block text-xs text-muted">
-                      {linked ? `Linked: ${linked.username ? `@${linked.username}` : linked.name}. Continue to reconnect it.` : o.description}
+                      {!available
+                        ? `Not set up on this server yet (${PLATFORM_INFO[o.platform].label} app credentials are missing).`
+                        : linked
+                          ? `Linked: ${linked.username ? `@${linked.username}` : linked.name}. Continue to reconnect it.`
+                          : o.description}
                     </span>
                   </span>
                   <ArrowRight className="size-4 text-muted transition-transform group-hover:translate-x-0.5" />

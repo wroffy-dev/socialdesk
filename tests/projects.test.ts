@@ -13,7 +13,7 @@ describe('projects', () => {
     const { ws, ctx } = await makeWorkspace('Brand House');
     const list = await listProjects(ctx);
     expect(list.projects).toHaveLength(1);
-    expect(list.projects[0]).toMatchObject({ name: 'Brand House', instagram: null, facebook: null });
+    expect(list.projects[0]).toMatchObject({ name: 'Brand House', slots: { INSTAGRAM: null, FACEBOOK: null, X: null, LINKEDIN: null, YOUTUBE: null } });
     expect(list).toMatchObject({ used: 1, limit: 2, planName: 'Free' });
     expect(await db.project.count({ where: { workspaceId: ws.id } })).toBe(1);
   });

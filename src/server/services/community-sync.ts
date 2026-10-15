@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { adapterFor } from '../adapters/registry';
 import { AdapterError } from '../adapters/types';
-import { toAccountRef } from './channels';
+import { accountRef } from '../integrations/tokens';
 
 /** Imports comments on recently published posts for channels whose permissions allow it. */
 export async function syncComments(opts: { workspaceId?: string } = {}) {
@@ -11,14 +11,14 @@ export async function syncComments(opts: { workspaceId?: string } = {}) {
   const stats = { accounts: 0, comments: 0, errors: 0 };
   for (const acc of accounts) {
     const adapter = adapterFor(acc);
-    if (!adapter.capabilities({ scopes: acc.scopes }).comments) continue;
-    const ref = toAccountRef(acc);
+    if (!adapter.capabilities(acc).comments) continue;
     const posts = await db.platformPost.findMany({
       where: { socialAccountId: acc.id, status: 'PUBLISHED', externalId: { not: null }, publishedAt: { gt: new Date(Date.now() - 14 * 24 * 3600_000) } },
       select: { id: true, externalId: true },
       take: 50,
     });
     try {
+      const ref = await accountRef(acc);
       for (const p of posts) {
         const comments = await adapter.listComments(ref, p.externalId!);
         const ownReplyParents = new Set(comments.filter((c) => c.isOwn && c.parentExternalId).map((c) => c.parentExternalId!));

@@ -24,7 +24,7 @@ export default function FeaturesPage() {
       <div className="mt-12 rounded-xl border border-line bg-surface p-6 text-center">
         <h2 className="text-lg font-semibold">Supported channels</h2>
         <p className="mt-1 text-[14px] text-muted">
-          Instagram professional accounts and Facebook Pages today. Coming next: {COMING_SOON.map((p) => p.label).join(', ')}.
+          Instagram professional accounts, Facebook Pages, X, LinkedIn profiles and pages, and YouTube channels today. Coming next: {COMING_SOON.map((p) => p.label).join(', ')}.
         </p>
         <Button asChild variant="primary" className="mt-4">
           <Link href="/signup">Get started free</Link>

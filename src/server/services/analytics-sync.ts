@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { adapterFor } from '../adapters/registry';
 import { AdapterError } from '../adapters/types';
-import { toAccountRef } from './channels';
+import { accountRef } from '../integrations/tokens';
 
 const DAY = 24 * 3600_000;
 
@@ -17,11 +17,11 @@ export async function syncAnalytics(opts: { workspaceId?: string } = {}) {
   const stats = { accounts: 0, snapshots: 0, posts: 0, errors: 0 };
   for (const acc of accounts) {
     const adapter = adapterFor(acc);
-    if (!adapter.capabilities({ scopes: acc.scopes }).analytics) continue;
-    const ref = toAccountRef(acc);
+    if (!adapter.capabilities(acc).analytics) continue;
     const last = acc.syncStates[0]?.lastSyncedAt;
     const since = new Date(Math.max(Date.now() - 30 * DAY, (last?.getTime() ?? 0) - 2 * DAY));
     try {
+      const ref = await accountRef(acc);
       const daily = await adapter.fetchAccountMetrics(ref, since, new Date());
       for (const d of daily) {
         const date = new Date(`${d.date}T00:00:00Z`);
