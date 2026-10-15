@@ -12,3 +12,4 @@ export const TEST_ENV: Record<string, string> = {
   META_MODE: 'mock',
   DISABLE_RATE_LIMIT: 'true',
 };
+TEST_ENV.PUBLISH_QUEUE_DISABLED = 'true';

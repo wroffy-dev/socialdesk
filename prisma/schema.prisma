@@ -468,6 +468,10 @@ model SocialPost {
   status      PostStatus   @default(DRAFT)
   /// Shared caption used for channels that are not customised.
   baseCaption String       @default("") @db.Text
+  /// Shared media (ordered) used for channels that are not customised.
+  baseMediaIds String[]    @default([])
+  /// Shared link used for channels that are not customised.
+  baseLinkUrl String?
   publishMode PublishMode?
   scheduledAt DateTime?
   timezone    String?

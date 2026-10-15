@@ -12,6 +12,7 @@ const config: NextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   reactStrictMode: true,
+  devIndicators: false,
   serverExternalPackages: ['bullmq', 'ioredis', 'bcryptjs', 'nodemailer'],
   experimental: {
     serverActions: { bodySizeLimit: '2mb' },
