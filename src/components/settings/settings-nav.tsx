@@ -10,7 +10,7 @@ const ITEMS: { href: string; label: string; icon: typeof User; perm?: Permission
   { href: 'general', label: 'General', icon: Building2, group: 'Workspace' },
   { href: 'members', label: 'Team members', icon: Users, group: 'Workspace' },
   { href: 'roles', label: 'Roles & permissions', icon: ShieldCheck, group: 'Workspace' },
-  { href: '../channels', label: 'Channels', icon: Layers, group: 'Workspace' },
+  { href: '../channels', label: 'Projects & channels', icon: Layers, group: 'Workspace' },
   { href: 'tags', label: 'Tags', icon: Tag, group: 'Workspace' },
   { href: 'saved-replies', label: 'Saved replies', icon: MessageSquareQuote, group: 'Workspace' },
   { href: 'billing', label: 'Billing & plan', icon: CreditCard, perm: 'billing.view', group: 'Workspace' },

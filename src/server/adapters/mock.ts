@@ -10,6 +10,7 @@ import { AdapterError, type AccountRef, type Capabilities, type Platform, type P
  *   #mock-flaky     → transient error on the first attempt only
  *   #mock-timeout   → ambiguous outcome (verification says "not published")
  *   #mock-authfail  → token revoked
+ * A first comment containing #mock-commentfail is rejected.
  */
 export class MockAdapter implements SocialAdapter {
   private static flakySeen = new Set<string>();
@@ -20,11 +21,12 @@ export class MockAdapter implements SocialAdapter {
 
   capabilities(_account: Pick<AccountRef, 'scopes'>): Capabilities {
     return {
-      formats: this.platform === 'INSTAGRAM' ? ['FEED', 'CAROUSEL', 'REEL'] : ['TEXT', 'LINK', 'FEED', 'REEL'],
+      formats: this.platform === 'INSTAGRAM' ? ['FEED', 'CAROUSEL', 'REEL', 'STORY'] : ['TEXT', 'LINK', 'FEED', 'REEL'],
       publish: true,
       analytics: false,
       comments: false,
       replyToComments: false,
+      firstComment: true,
       directMessages: false,
       missing: ['Mock channel: analytics and comments are not simulated'],
     };
@@ -68,6 +70,15 @@ export class MockAdapter implements SocialAdapter {
 
   async listComments() {
     return [];
+  }
+
+  /** First comments posted per external post id (inspectable in tests). */
+  static comments = new Map<string, string[]>();
+
+  async postComment(_account: AccountRef, externalPostId: string, text: string) {
+    if (text.includes('#mock-commentfail')) throw new AdapterError('permanent', 'Mock platform rejected the comment.', 'mock_comment');
+    MockAdapter.comments.set(externalPostId, [...(MockAdapter.comments.get(externalPostId) ?? []), text]);
+    return { externalId: `mock_comment_${randomBytes(6).toString('hex')}` };
   }
 
   async replyToComment(): Promise<{ externalId: string }> {

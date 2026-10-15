@@ -1,9 +1,12 @@
 /**
  * Default plan catalogue, written to the database by the seed script. After seeding, the
  * database is the source of truth: prices and limits are edited from the super-admin panel.
+ *
+ * Plans limit projects rather than channels: each project links at most one Instagram account
+ * and one Facebook Page.
  */
 export const ENTITLEMENT_KEYS = {
-  socialAccounts: 'social_accounts',
+  projects: 'projects',
   teamMembers: 'team_members',
   workspaces: 'workspaces',
   postsPerMonth: 'posts_per_month',
@@ -14,7 +17,7 @@ export const ENTITLEMENT_KEYS = {
 export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[keyof typeof ENTITLEMENT_KEYS];
 
 export const ENTITLEMENT_LABEL: Record<EntitlementKey, string> = {
-  social_accounts: 'Connected channels',
+  projects: 'Projects',
   team_members: 'Team members',
   workspaces: 'Workspaces you own',
   posts_per_month: 'Posts per month',
@@ -39,7 +42,7 @@ export const DEFAULT_PLANS: PlanDefinition[] = [
     priceAmount: 0,
     sortOrder: 0,
     entitlements: {
-      social_accounts: 3,
+      projects: 2,
       team_members: 1,
       workspaces: 1,
       posts_per_month: 30,
@@ -48,13 +51,13 @@ export const DEFAULT_PLANS: PlanDefinition[] = [
     },
   },
   {
-    key: 'starter',
-    name: 'Starter',
+    key: 'pro',
+    name: 'Pro',
     description: 'For small businesses posting every week.',
     priceAmount: 49900,
     sortOrder: 1,
     entitlements: {
-      social_accounts: 6,
+      projects: 5,
       team_members: 3,
       workspaces: 2,
       posts_per_month: 200,
@@ -63,13 +66,13 @@ export const DEFAULT_PLANS: PlanDefinition[] = [
     },
   },
   {
-    key: 'pro',
-    name: 'Pro',
+    key: 'business',
+    name: 'Business',
     description: 'For growing teams with several brands.',
     priceAmount: 149900,
     sortOrder: 2,
     entitlements: {
-      social_accounts: 15,
+      projects: 10,
       team_members: 10,
       workspaces: 5,
       posts_per_month: 1000,
@@ -84,7 +87,7 @@ export const DEFAULT_PLANS: PlanDefinition[] = [
     priceAmount: 399900,
     sortOrder: 3,
     entitlements: {
-      social_accounts: 50,
+      projects: 20,
       team_members: 30,
       workspaces: 25,
       posts_per_month: null,

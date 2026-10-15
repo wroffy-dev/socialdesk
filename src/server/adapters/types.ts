@@ -1,4 +1,5 @@
 import type { PostFormat } from '@/lib/platforms';
+import type { VersionOptions } from '@/lib/post-options';
 
 export type Platform = 'INSTAGRAM' | 'FACEBOOK';
 
@@ -57,6 +58,8 @@ export interface PublishInput {
   idempotencyKey: string;
   /** State saved by an earlier attempt (e.g. an Instagram container id) so retries resume. */
   providerState: Record<string, unknown> | null;
+  /** Story vs post, collaborators, tagged people, Reel settings (first comment is posted separately). */
+  options: VersionOptions;
 }
 
 export interface PublishHooks {
@@ -108,6 +111,8 @@ export interface Capabilities {
   analytics: boolean;
   comments: boolean;
   replyToComments: boolean;
+  /** Can post a comment on its own published posts (used for the "first comment"). */
+  firstComment: boolean;
   directMessages: boolean;
   /** Human-readable reasons a capability is off (e.g. a missing permission). */
   missing: string[];
@@ -125,4 +130,6 @@ export interface SocialAdapter {
   fetchPostMetrics(account: AccountRef, externalId: string): Promise<PostMetrics>;
   listComments(account: AccountRef, externalPostId: string): Promise<RemoteComment[]>;
   replyToComment(account: AccountRef, commentExternalId: string, text: string): Promise<{ externalId: string }>;
+  /** Comments on one of the account's own published posts. Not idempotent. */
+  postComment(account: AccountRef, externalPostId: string, text: string): Promise<{ externalId: string }>;
 }

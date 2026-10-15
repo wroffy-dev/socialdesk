@@ -1,3 +1,5 @@
+import { DEFAULT_OPTIONS, FB_COMMENT_MAX, IG_COMMENT_MAX, IG_MAX_COLLABORATORS, IG_MAX_USER_TAGS, type VersionOptions } from './post-options';
+
 /**
  * Platform rules shared by the composer (instant feedback) and the server (authoritative check).
  * Limits follow Meta's published Content Publishing API constraints.
@@ -14,7 +16,7 @@ export interface PlatformInfo {
 }
 
 export const PLATFORM_INFO: Record<Platform, PlatformInfo> = {
-  INSTAGRAM: { label: 'Instagram', color: '#d6287a', maxChars: 2200, formats: ['FEED', 'CAROUSEL', 'REEL'] },
+  INSTAGRAM: { label: 'Instagram', color: '#d6287a', maxChars: 2200, formats: ['FEED', 'CAROUSEL', 'REEL', 'STORY'] },
   FACEBOOK: { label: 'Facebook', color: '#1877f2', maxChars: 63206, formats: ['TEXT', 'LINK', 'FEED', 'REEL'] },
 };
 
@@ -65,10 +67,11 @@ export function charCount(text: string) {
   return Array.from(text).length;
 }
 
-/** Picks the format the content implies. */
-export function inferFormat(platform: Platform, content: VersionContent): PostFormat {
+/** Picks the format the content (and, for Instagram, the chosen post type) implies. */
+export function inferFormat(platform: Platform, content: VersionContent, options: Pick<VersionOptions, 'igType'> = DEFAULT_OPTIONS): PostFormat {
   const { media } = content;
   if (platform === 'INSTAGRAM') {
+    if (options.igType === 'story') return 'STORY';
     if (media.length > 1) return 'CAROUSEL';
     if (media[0]?.kind === 'VIDEO') return 'REEL';
     return 'FEED';
@@ -78,7 +81,8 @@ export function inferFormat(platform: Platform, content: VersionContent): PostFo
   return 'FEED';
 }
 
-function validateInstagram(c: VersionContent): Issue[] {
+function validateInstagram(c: VersionContent, o: VersionOptions): Issue[] {
+  if (o.igType === 'story') return validateInstagramStory(c, o);
   const issues: Issue[] = [];
   const err = (message: string) => issues.push({ severity: 'error', message });
   const warn = (message: string) => issues.push({ severity: 'warning', message });
@@ -112,10 +116,55 @@ function validateInstagram(c: VersionContent): Issue[] {
       if (m.sizeBytes > 1024 * MB) err('Instagram videos must be 1 GB or smaller.');
     }
   }
+
+  // Collaborators, people tags and first comment.
+  if (o.collaborators.length > IG_MAX_COLLABORATORS) err(`Instagram allows up to ${IG_MAX_COLLABORATORS} collaborators.`);
+  if (o.userTags.length > IG_MAX_USER_TAGS) err(`Instagram allows up to ${IG_MAX_USER_TAGS} tagged people.`);
+  const taggable = new Set(c.media.filter((m) => m.kind === 'IMAGE' || c.media.length === 1).map((m) => m.id));
+  if (o.userTags.some((t) => t.mediaId && !taggable.has(t.mediaId))) {
+    warn('A tagged item was removed or is a video inside a carousel; those tags will be skipped.');
+  }
+  issues.push(...validateFirstComment(o.firstComment, IG_COMMENT_MAX, true));
+  if (o.coverOffsetSec != null && c.media.length === 1 && c.media[0]?.kind === 'VIDEO' && c.media[0].durationSec != null && o.coverOffsetSec > c.media[0].durationSec) {
+    err('The Reel cover frame is after the end of the video.');
+  }
   return issues;
 }
 
-function validateFacebook(c: VersionContent): Issue[] {
+function validateInstagramStory(c: VersionContent, o: VersionOptions): Issue[] {
+  const issues: Issue[] = [];
+  const err = (message: string) => issues.push({ severity: 'error', message });
+  const warn = (message: string) => issues.push({ severity: 'warning', message });
+  if (c.media.length !== 1) err('An Instagram Story needs exactly one image or video.');
+  const m = c.media[0];
+  if (m?.kind === 'IMAGE') {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(m.mimeType)) err('Story images must be JPEG, PNG or WebP (converted to JPEG on publish).');
+    if (m.sizeBytes > 8 * MB) err('Story images must be 8 MB or smaller.');
+  }
+  if (m?.kind === 'VIDEO') {
+    if (!['video/mp4', 'video/quicktime'].includes(m.mimeType)) err('Story videos must be MP4 or MOV.');
+    if (m.durationSec != null && m.durationSec < 3) err('Story videos must be at least 3 seconds long.');
+    if (m.durationSec != null && m.durationSec > 60) err('Story videos can be at most 60 seconds long.');
+    if (m.sizeBytes > 100 * MB) err('Story videos must be 100 MB or smaller.');
+  }
+  if (m?.width && m.height && Math.abs(m.width / m.height - 9 / 16) > 0.1) warn('Stories are 9:16. Other shapes are shown with bars or cropped.');
+  if (c.caption.trim()) warn('Captions are not shown on Stories.');
+  if (c.linkUrl) warn('Link stickers cannot be added through the API; the link is ignored.');
+  // Kept in the editor so switching back to a post restores them, but not published with a Story.
+  const ignored = [o.collaborators.length && 'collaborators', o.userTags.length && 'tagged people', o.firstComment.trim() && 'the first comment'].filter(Boolean);
+  if (ignored.length) warn(`Stories can’t have ${ignored.join(', ')}; ${ignored.length > 1 ? 'they are' : 'it is'} left out when posting a Story.`);
+  return issues;
+}
+
+function validateFirstComment(text: string, max: number, instagram: boolean): Issue[] {
+  const issues: Issue[] = [];
+  const len = charCount(text);
+  if (len > max) issues.push({ severity: 'error', message: `First comment is ${len.toLocaleString()} characters. The limit is ${max.toLocaleString()}.` });
+  if (instagram && countHashtags(text) > 30) issues.push({ severity: 'error', message: 'Instagram allows 30 hashtags in a comment.' });
+  return issues;
+}
+
+function validateFacebook(c: VersionContent, o: VersionOptions): Issue[] {
   const issues: Issue[] = [];
   const err = (message: string) => issues.push({ severity: 'error', message });
   const len = charCount(c.caption);
@@ -131,11 +180,12 @@ function validateFacebook(c: VersionContent): Issue[] {
     if (m.kind === 'VIDEO' && !['video/mp4', 'video/quicktime'].includes(m.mimeType)) err('Facebook videos must be MP4 or MOV.');
   }
   if (c.linkUrl && !/^https?:\/\//i.test(c.linkUrl)) err('Links must start with http:// or https://');
+  issues.push(...validateFirstComment(o.firstComment, FB_COMMENT_MAX, false));
   return issues;
 }
 
-export function validateVersion(platform: Platform, content: VersionContent): Issue[] {
-  return platform === 'INSTAGRAM' ? validateInstagram(content) : validateFacebook(content);
+export function validateVersion(platform: Platform, content: VersionContent, options: VersionOptions = DEFAULT_OPTIONS): Issue[] {
+  return platform === 'INSTAGRAM' ? validateInstagram(content, options) : validateFacebook(content, options);
 }
 
 export const errorsOnly = (issues: Issue[]) => issues.filter((i) => i.severity === 'error');

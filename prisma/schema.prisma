@@ -41,20 +41,20 @@ model User {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  accounts           Account[]
-  sessions           Session[]
-  tokens             UserToken[]
-  memberships        WorkspaceMember[]
-  createdWorkspaces  Workspace[]               @relation("WorkspaceCreatedBy")
-  invitationsSent    Invitation[]              @relation("InvitationInvitedBy")
-  posts              SocialPost[]              @relation("PostCreatedBy")
-  media              MediaAsset[]              @relation("MediaUploadedBy")
-  socialAccounts     SocialAccount[]           @relation("SocialAccountConnectedBy")
-  auditLogs          AuditLog[]
-  notificationPrefs  NotificationPreference[]
-  assignedConvos     Conversation[]            @relation("ConversationAssignee")
-  notes              InternalNote[]
-  sentMessages       Message[]                 @relation("MessageSentBy")
+  accounts          Account[]
+  sessions          Session[]
+  tokens            UserToken[]
+  memberships       WorkspaceMember[]
+  createdWorkspaces Workspace[]              @relation("WorkspaceCreatedBy")
+  invitationsSent   Invitation[]             @relation("InvitationInvitedBy")
+  posts             SocialPost[]             @relation("PostCreatedBy")
+  media             MediaAsset[]             @relation("MediaUploadedBy")
+  socialAccounts    SocialAccount[]          @relation("SocialAccountConnectedBy")
+  auditLogs         AuditLog[]
+  notificationPrefs NotificationPreference[]
+  assignedConvos    Conversation[]           @relation("ConversationAssignee")
+  notes             InternalNote[]
+  sentMessages      Message[]                @relation("MessageSentBy")
 }
 
 /// Auth.js OAuth account link (reserved for future social login providers).
@@ -134,42 +134,43 @@ enum WorkspaceRole {
 }
 
 model Workspace {
-  id          String          @id @default(cuid())
-  name        String
-  slug        String          @unique
-  logoUrl     String?
-  timezone    String          @default("UTC")
-  status      WorkspaceStatus @default(ACTIVE)
-  suspendedAt DateTime?
+  id            String          @id @default(cuid())
+  name          String
+  slug          String          @unique
+  logoUrl       String?
+  timezone      String          @default("UTC")
+  status        WorkspaceStatus @default(ACTIVE)
+  suspendedAt   DateTime?
   suspendReason String?
-  createdById String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  createdBy       User?                    @relation("WorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  members         WorkspaceMember[]
-  invitations     Invitation[]
-  subscription    Subscription?
-  invoices        Invoice[]
-  payments        Payment[]
-  usage           UsageRecord[]
-  socialAccounts  SocialAccount[]
-  posts           SocialPost[]
-  platformPosts   PlatformPost[]
-  media           MediaAsset[]
-  tags            ContentTag[]
-  attempts        PublishingAttempt[]
-  queueSettings   QueueSettings?
-  queueSlots      QueueSlot[]
-  metricSnapshots MetricSnapshot[]
-  postMetrics     PostMetric[]
-  conversations   Conversation[]
-  messages        Message[]
-  comments        Comment[]
-  notes           InternalNote[]
-  savedReplies    SavedReply[]
-  auditLogs       AuditLog[]
-  oauthStates     OAuthState[]
+  createdBy          User?                    @relation("WorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  members            WorkspaceMember[]
+  invitations        Invitation[]
+  subscription       Subscription?
+  invoices           Invoice[]
+  payments           Payment[]
+  usage              UsageRecord[]
+  projects           Project[]
+  socialAccounts     SocialAccount[]
+  posts              SocialPost[]
+  platformPosts      PlatformPost[]
+  media              MediaAsset[]
+  tags               ContentTag[]
+  attempts           PublishingAttempt[]
+  queueSettings      QueueSettings?
+  queueSlots         QueueSlot[]
+  metricSnapshots    MetricSnapshot[]
+  postMetrics        PostMetric[]
+  conversations      Conversation[]
+  messages           Message[]
+  comments           Comment[]
+  notes              InternalNote[]
+  savedReplies       SavedReply[]
+  auditLogs          AuditLog[]
+  oauthStates        OAuthState[]
   pendingConnections PendingConnection[]
   notificationPrefs  NotificationPreference[]
 
@@ -263,20 +264,20 @@ model SiteContent {
 // ---------------------------------------------------------------------------
 
 model Plan {
-  id              String   @id @default(cuid())
-  key             String   @unique
-  name            String
-  description     String?
+  id             String   @id @default(cuid())
+  key            String   @unique
+  name           String
+  description    String?
   /// Price per billing interval in the smallest currency unit.
-  priceAmount     Int      @default(0)
-  currency        String   @default("INR")
-  interval        String   @default("month")
-  razorpayPlanId  String?
-  isPublic        Boolean  @default(true)
-  isActive        Boolean  @default(true)
-  sortOrder       Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  priceAmount    Int      @default(0)
+  currency       String   @default("INR")
+  interval       String   @default("month")
+  razorpayPlanId String?
+  isPublic       Boolean  @default(true)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   entitlements  Entitlement[]
   subscriptions Subscription[]
@@ -409,29 +410,52 @@ enum IntegrationMode {
   MOCK
 }
 
+/// A brand or client inside a workspace. Each project links at most one account per platform
+/// (one Instagram + one Facebook Page); posts belong to a project. Plans limit the number of projects.
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String   @default("#6366f1")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccounts     SocialAccount[]
+  posts              SocialPost[]
+  oauthStates        OAuthState[]
+  pendingConnections PendingConnection[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
 model SocialAccount {
-  id              String              @id @default(cuid())
-  workspaceId     String
-  platform        SocialPlatform
-  externalId      String
-  name            String
-  username        String?
-  avatarUrl       String?
+  id             String              @id @default(cuid())
+  workspaceId    String
+  /// The project this account is linked to. At most one active account per platform per project.
+  projectId      String
+  platform       SocialPlatform
+  externalId     String
+  name           String
+  username       String?
+  avatarUrl      String?
   /// AES-256-GCM encrypted access token (see src/server/crypto.ts).
-  accessTokenEnc  String              @db.Text
-  tokenExpiresAt  DateTime?
-  scopes          String[]
-  status          SocialAccountStatus @default(CONNECTED)
-  mode            IntegrationMode     @default(DEVELOPMENT)
-  lastError       String?
-  lastCheckedAt   DateTime?
+  accessTokenEnc String              @db.Text
+  tokenExpiresAt DateTime?
+  scopes         String[]
+  status         SocialAccountStatus @default(CONNECTED)
+  mode           IntegrationMode     @default(DEVELOPMENT)
+  lastError      String?
+  lastCheckedAt  DateTime?
   /// Platform-specific data, e.g. the Facebook Page id behind an Instagram account.
-  metadata        Json?
-  connectedById   String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  metadata       Json?
+  connectedById  String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
   connectedBy   User?                  @relation("SocialAccountConnectedBy", fields: [connectedById], references: [id], onDelete: SetNull)
   platformPosts PlatformPost[]
   snapshots     MetricSnapshot[]
@@ -442,6 +466,7 @@ model SocialAccount {
 
   @@unique([workspaceId, platform, externalId])
   @@index([workspaceId, status])
+  @@index([projectId, platform])
 }
 
 enum PostStatus {
@@ -462,29 +487,32 @@ enum PublishMode {
 
 /// A campaign: one piece of content sent to one or more channels.
 model SocialPost {
-  id          String       @id @default(cuid())
-  workspaceId String
-  createdById String?
-  status      PostStatus   @default(DRAFT)
+  id           String       @id @default(cuid())
+  workspaceId  String
+  projectId    String
+  createdById  String?
+  status       PostStatus   @default(DRAFT)
   /// Shared caption used for channels that are not customised.
-  baseCaption String       @default("") @db.Text
+  baseCaption  String       @default("") @db.Text
   /// Shared media (ordered) used for channels that are not customised.
-  baseMediaIds String[]    @default([])
+  baseMediaIds String[]     @default([])
   /// Shared link used for channels that are not customised.
-  baseLinkUrl String?
-  publishMode PublishMode?
-  scheduledAt DateTime?
-  timezone    String?
-  notes       String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  baseLinkUrl  String?
+  publishMode  PublishMode?
+  scheduledAt  DateTime?
+  timezone     String?
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User?          @relation("PostCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   versions  PlatformPost[]
   tags      PostTag[]
 
   @@index([workspaceId, status])
+  @@index([workspaceId, projectId])
   @@index([workspaceId, scheduledAt])
   @@index([workspaceId, updatedAt])
 }
@@ -512,33 +540,41 @@ enum PostFormat {
 
 /// One channel's version of a campaign, validated and published independently.
 model PlatformPost {
-  id              String             @id @default(cuid())
-  workspaceId     String
-  postId          String
-  socialAccountId String
-  platform        SocialPlatform
-  caption         String             @default("") @db.Text
+  id                String             @id @default(cuid())
+  workspaceId       String
+  postId            String
+  socialAccountId   String
+  platform          SocialPlatform
+  caption           String             @default("") @db.Text
   /// True when this version was edited away from the shared caption/media.
-  customized      Boolean            @default(false)
-  format          PostFormat         @default(FEED)
-  linkUrl         String?
-  status          PlatformPostStatus @default(DRAFT)
-  scheduledAt     DateTime?
+  customized        Boolean            @default(false)
+  format            PostFormat         @default(FEED)
+  linkUrl           String?
+  status            PlatformPostStatus @default(DRAFT)
+  scheduledAt       DateTime?
   /// Stable key so the worker never publishes the same version twice.
-  idempotencyKey  String             @unique @default(cuid())
-  externalId      String?
-  externalUrl     String?
-  publishedAt     DateTime?
-  attemptCount    Int                @default(0)
-  lastError       String?
-  lastErrorCode   String?
-  nextRetryAt     DateTime?
-  lockedAt        DateTime?
-  lockedBy        String?
+  idempotencyKey    String             @unique @default(cuid())
+  externalId        String?
+  externalUrl       String?
+  publishedAt       DateTime?
+  attemptCount      Int                @default(0)
+  lastError         String?
+  lastErrorCode     String?
+  nextRetryAt       DateTime?
+  lockedAt          DateTime?
+  lockedBy          String?
   /// Platform-side container id (e.g. Instagram media container) created before publish.
-  providerState   Json?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  providerState     Json?
+  /// Publishing options (Story vs post, collaborators, tagged people, Reel settings, first comment).
+  /// Shape: src/lib/post-options.ts.
+  options           Json?
+  /// The first comment posted after publishing, or why it couldn't be posted.
+  firstCommentId    String?
+  firstCommentError String?
+  /// When posting the first comment was last started (guards against double posting).
+  firstCommentAt    DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   post          SocialPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -652,10 +688,10 @@ model PublishingAttempt {
 }
 
 model QueueSettings {
-  workspaceId String   @id
-  paused      Boolean  @default(false)
+  workspaceId String    @id
+  paused      Boolean   @default(false)
   pausedAt    DateTime?
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
@@ -682,32 +718,38 @@ model QueueSlot {
 
 /// Short-lived OAuth state, bound to the user and workspace that started the flow.
 model OAuthState {
-  id          String    @id @default(cuid())
-  stateHash   String    @unique
+  id          String         @id @default(cuid())
+  stateHash   String         @unique
   workspaceId String
+  projectId   String
+  platform    SocialPlatform
   userId      String
   provider    String
   expiresAt   DateTime
   usedAt      DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime       @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
 }
 
 /// Accounts discovered during OAuth, waiting for the user to pick which ones to connect.
 model PendingConnection {
-  id          String   @id @default(cuid())
+  id          String         @id @default(cuid())
   workspaceId String
+  projectId   String
+  platform    SocialPlatform
   userId      String
   provider    String
   /// Encrypted JSON list of discovered accounts including their tokens.
-  payloadEnc  String   @db.Text
+  payloadEnc  String         @db.Text
   expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime       @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
 }
@@ -868,7 +910,7 @@ model Message {
 
 /// A comment on a published post, synced from the platform.
 model Comment {
-  id               String    @id @default(cuid())
+  id               String   @id @default(cuid())
   workspaceId      String
   socialAccountId  String
   platformPostId   String?
@@ -876,13 +918,13 @@ model Comment {
   parentExternalId String?
   authorName       String
   authorHandle     String?
-  body             String    @db.Text
-  isOwn            Boolean   @default(false)
-  answered         Boolean   @default(false)
+  body             String   @db.Text
+  isOwn            Boolean  @default(false)
+  answered         Boolean  @default(false)
   assignedToId     String?
-  hidden           Boolean   @default(false)
+  hidden           Boolean  @default(false)
   postedAt         DateTime
-  createdAt        DateTime  @default(now())
+  createdAt        DateTime @default(now())
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   socialAccount SocialAccount  @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)

@@ -24,7 +24,7 @@ export default async function AdminWorkspaces({ searchParams }: { searchParams: 
             <TH>Owner</TH>
             <TH>Status</TH>
             <TH>Plan</TH>
-            <TH>Members / channels / posts</TH>
+            <TH>Members / projects / channels / posts</TH>
             <TH>Created</TH>
             <TH />
           </TR>
@@ -49,7 +49,7 @@ export default async function AdminWorkspaces({ searchParams }: { searchParams: 
                 )}
               </TD>
               <TD className="tabular-nums">
-                {w._count.members} / {w._count.socialAccounts} / {w._count.posts}
+                {w._count.members} / {w._count.projects} / {w._count.socialAccounts} / {w._count.posts}
               </TD>
               <TD className="text-muted">{formatAgo(w.createdAt)}</TD>
               <TD className="text-right">

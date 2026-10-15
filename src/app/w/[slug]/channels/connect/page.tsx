@@ -5,7 +5,7 @@ import { getPendingConnection } from '@/server/services/channels';
 import { PageHeader } from '@/components/page-header';
 import { PendingAccounts } from '@/components/channels/pending-accounts';
 
-export const metadata = { title: 'Choose accounts' };
+export const metadata = { title: 'Choose an account' };
 
 export default async function ConnectPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ pending?: string }> }) {
   const { slug } = await params;
@@ -16,7 +16,11 @@ export default async function ConnectPage({ params, searchParams }: { params: Pr
   if (!data) redirect(`/w/${slug}/channels?error=${encodeURIComponent('This connection request expired. Please connect again.')}`);
   return (
     <>
-      <PageHeader icon={<Plug />} title="Choose accounts to connect" description={`Signed in to Facebook as ${data.fbUserName}.`} />
+      <PageHeader
+        icon={<Plug />}
+        title={`Choose the ${data.platformLabel} ${data.platform === 'FACEBOOK' ? 'Page' : 'account'} for ${data.project.name}`}
+        description={`Signed in to Facebook as ${data.fbUserName}. A project links one ${data.platformLabel} ${data.platform === 'FACEBOOK' ? 'Page' : 'account'}.`}
+      />
       <PendingAccounts data={data} pendingId={pending} workspace={{ id: ctx.workspace.id, slug }} />
     </>
   );

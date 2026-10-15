@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Hash,
@@ -29,6 +30,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -40,32 +43,47 @@ import { useConfirm } from '@/components/ui/confirm';
 import { useConnectDialog } from '@/components/channels/connect-dialog';
 import { api, ApiError, errorMessage } from '@/lib/api-client';
 import { charCount, COMING_SOON, countHashtags, errorsOnly, PLATFORM_INFO, validateVersion, type Issue } from '@/lib/platforms';
+import { DEFAULT_OPTIONS, type VersionOptions } from '@/lib/post-options';
+import { ChannelOptions } from './channel-options';
 import { formatAgo, formatDateTime, utcToWall } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { PostPreview } from './preview';
 import { SchedulePopover, type ScheduleValue } from './schedule-popover';
-import type { ComposerChannel, ComposerState, ComposerTag, Override, PostDto, ScheduleAction } from './types';
+import type { ComposerChannel, ComposerProject, ComposerState, ComposerTag, Override, PostDto, ScheduleAction } from './types';
 
 const EMOJI = ['😀', '😍', '🎉', '🔥', '✨', '🙌', '👏', '💚', '📸', '🚀', '✅', '💡', '📣', '🎁', '☕', '🌿', '👉', '⭐'];
 const SHARED = 'shared';
 const AUTOSAVE_MS = 2500;
 
-function stateFromPost(post: PostDto | null, channels: ComposerChannel[], preselect: string[]): ComposerState {
+/** Connected channels of a project, Instagram first. */
+const projectChannels = (channels: ComposerChannel[], projectId: string) => channels.filter((c) => c.projectId === projectId);
+
+function stateFromPost(post: PostDto | null, projects: ComposerProject[], channels: ComposerChannel[], preselect: string[], presetProject: string | null): ComposerState {
   if (!post) {
-    const connected = channels.filter((c) => c.status === 'CONNECTED');
-    const selected = preselect.length ? preselect.filter((id) => channels.some((c) => c.id === id)) : connected.length === 1 ? [connected[0]!.id] : [];
-    return { selected, baseCaption: '', baseMedia: [], baseLinkUrl: null, overrides: {}, tagIds: [], notes: '' };
+    const pre = channels.filter((c) => preselect.includes(c.id));
+    const projectId =
+      (presetProject && projects.some((p) => p.id === presetProject) ? presetProject : null) ??
+      pre[0]?.projectId ??
+      projects.find((p) => channels.some((c) => c.projectId === p.id))?.id ??
+      projects[0]?.id ??
+      '';
+    const mine = projectChannels(channels, projectId);
+    const preInProject = pre.filter((c) => c.projectId === projectId).map((c) => c.id);
+    const selected = preInProject.length ? preInProject : mine.filter((c) => c.status === 'CONNECTED').map((c) => c.id);
+    return { projectId, selected, baseCaption: '', baseMedia: [], baseLinkUrl: null, overrides: {}, options: {}, tagIds: [], notes: '' };
   }
   const overrides: Record<string, Override> = {};
   for (const v of post.versions) {
     if (v.customized) overrides[v.socialAccountId] = { caption: v.caption, media: v.media, linkUrl: v.linkUrl };
   }
   return {
+    projectId: post.projectId,
     selected: post.versions.map((v) => v.socialAccountId),
     baseCaption: post.baseCaption,
     baseMedia: post.baseMedia,
     baseLinkUrl: post.baseLinkUrl,
     overrides,
+    options: Object.fromEntries(post.versions.map((v) => [v.socialAccountId, v.options])),
     tagIds: post.tags.map((t) => t.id),
     notes: post.notes ?? '',
   };
@@ -73,6 +91,7 @@ function stateFromPost(post: PostDto | null, channels: ComposerChannel[], presel
 
 function toPayload(s: ComposerState, action: ScheduleAction) {
   return {
+    projectId: s.projectId || undefined,
     baseCaption: s.baseCaption,
     baseMediaIds: s.baseMedia.map((m) => m.id),
     baseLinkUrl: s.baseLinkUrl?.trim() || null,
@@ -80,9 +99,10 @@ function toPayload(s: ComposerState, action: ScheduleAction) {
     notes: s.notes.trim() || null,
     versions: s.selected.map((id) => {
       const o = s.overrides[id];
+      const options = s.options[id] ?? DEFAULT_OPTIONS;
       return o
-        ? { socialAccountId: id, customized: true, caption: o.caption, mediaIds: o.media.map((m) => m.id), linkUrl: o.linkUrl?.trim() || null }
-        : { socialAccountId: id, customized: false };
+        ? { socialAccountId: id, customized: true, caption: o.caption, mediaIds: o.media.map((m) => m.id), linkUrl: o.linkUrl?.trim() || null, options }
+        : { socialAccountId: id, customized: false, options };
     }),
     action,
   };
@@ -99,6 +119,7 @@ function defaultSchedule(tz: string, presetIso: string | null): ScheduleValue {
 
 export function Composer({
   workspace,
+  projects,
   channels,
   tags: initialTags,
   post: initialPost,
@@ -107,10 +128,12 @@ export function Composer({
   canManageChannels,
   canManageTags,
   preselectChannels,
+  presetProject,
   presetDate,
   defaultMode,
 }: {
   workspace: { id: string; slug: string; timezone: string };
+  projects: ComposerProject[];
   channels: ComposerChannel[];
   tags: ComposerTag[];
   post: PostDto | null;
@@ -119,6 +142,7 @@ export function Composer({
   canManageChannels: boolean;
   canManageTags: boolean;
   preselectChannels: string[];
+  presetProject: string | null;
   presetDate: string | null;
   defaultMode: 'queue' | null;
 }) {
@@ -129,7 +153,7 @@ export function Composer({
   const apiBase = `/api/w/${workspace.id}`;
 
   const [post, setPost] = useState<PostDto | null>(initialPost);
-  const [state, setState] = useState<ComposerState>(() => stateFromPost(initialPost, channels, preselectChannels));
+  const [state, setState] = useState<ComposerState>(() => stateFromPost(initialPost, projects, channels, preselectChannels, presetProject));
   const [tab, setTab] = useState<string>(SHARED);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [tags, setTags] = useState(initialTags);
@@ -158,6 +182,8 @@ export function Composer({
     return () => window.clearInterval(id);
   }, []);
 
+  const currentProject = projects.find((p) => p.id === state.projectId) ?? null;
+  const visibleChannels = useMemo(() => projectChannels(channels, state.projectId), [channels, state.projectId]);
   const selectedChannels = useMemo(() => channels.filter((c) => state.selected.includes(c.id)), [channels, state.selected]);
   const active = selectedChannels.find((c) => c.id === tab) ?? null;
 
@@ -175,11 +201,11 @@ export function Composer({
     const out: Record<string, Issue[]> = {};
     for (const c of selectedChannels) {
       const e = effective(c.id);
-      out[c.id] = validateVersion(c.platform, { caption: e.caption, linkUrl: e.linkUrl, media: e.media });
+      out[c.id] = validateVersion(c.platform, { caption: e.caption, linkUrl: e.linkUrl, media: e.media }, state.options[c.id] ?? DEFAULT_OPTIONS);
       if (c.status !== 'CONNECTED') out[c.id]!.push({ severity: 'error', message: `${c.name} needs to be reconnected.` });
     }
     return out;
-  }, [selectedChannels, effective]);
+  }, [selectedChannels, effective, state.options]);
 
   const blockers = useMemo(() => {
     const list: string[] = [];
@@ -227,6 +253,22 @@ export function Composer({
       else delete overrides[id];
       return { ...s, overrides };
     });
+
+  const optionsFor = (id: string): VersionOptions => state.options[id] ?? DEFAULT_OPTIONS;
+  const setOptions = (id: string, patch: Partial<VersionOptions>) =>
+    update((s) => ({ ...s, options: { ...s.options, [id]: { ...(s.options[id] ?? DEFAULT_OPTIONS), ...patch } } }));
+
+  /** Switching project selects that project's connected channels; per-channel edits are dropped. */
+  const changeProject = (projectId: string) =>
+    update((s) => ({
+      ...s,
+      projectId,
+      selected: projectChannels(channels, projectId)
+        .filter((c) => c.status === 'CONNECTED')
+        .map((c) => c.id),
+      overrides: {},
+      options: {},
+    }));
 
   const toggleChannel = (id: string) =>
     update((s) => ({ ...s, selected: s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id] }));
@@ -408,19 +450,39 @@ export function Composer({
         </div>
       )}
 
-      {/* Channel picker */}
+      {/* Project + channel picker */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6">
-        {channels.length === 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={locked} aria-label="Project" className="rounded-full">
+              <span className="size-2.5 rounded-full" style={{ background: currentProject?.color }} />
+              <span className="max-w-[160px] truncate">{currentProject?.name ?? 'Choose project'}</span>
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-60">
+            <DropdownMenuLabel>Project</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={state.projectId} onValueChange={changeProject}>
+              {projects.map((p) => (
+                <DropdownMenuRadioItem key={p.id} value={p.id}>
+                  <span className="size-2.5 rounded-full" style={{ background: p.color }} /> {p.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <span className="h-5 w-px bg-line" aria-hidden />
+        {visibleChannels.length === 0 ? (
           <div className="flex items-center gap-2 text-[13px] text-muted">
-            No channels connected yet.
+            No channels linked to this project yet.
             {canManageChannels && (
-              <Button size="sm" variant="primary" onClick={connect.open}>
+              <Button size="sm" variant="primary" onClick={() => connect.open({ projectId: state.projectId })}>
                 Connect a channel
               </Button>
             )}
           </div>
         ) : (
-          channels.map((c) => {
+          visibleChannels.map((c) => {
             const on = state.selected.includes(c.id);
             return (
               <button
@@ -594,6 +656,48 @@ export function Composer({
             </label>
           )}
 
+          {/* Per-channel publishing options */}
+          {active ? (
+            <ChannelOptions
+              channel={active}
+              options={optionsFor(active.id)}
+              media={current.media}
+              caption={current.caption}
+              disabled={locked}
+              onChange={(patch) => setOptions(active.id, patch)}
+            />
+          ) : (
+            selectedChannels.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {selectedChannels.map((c) => {
+                  const o = optionsFor(c.id);
+                  const summary = [
+                    c.platform === 'INSTAGRAM' && o.igType === 'story' && 'Story',
+                    o.collaborators.length > 0 && `${o.collaborators.length} collaborator${o.collaborators.length > 1 ? 's' : ''}`,
+                    o.userTags.length > 0 && `${o.userTags.length} tagged`,
+                    o.firstComment.trim() && 'first comment',
+                  ].filter(Boolean);
+                  const e = effective(c.id);
+                  return (
+                    <details key={c.id} className="group rounded-lg border border-line">
+                      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[13px]">
+                        <PlatformIcon platform={c.platform} size={16} />
+                        <span className="font-medium">{c.platform === 'INSTAGRAM' ? 'Instagram options' : 'Facebook options'}</span>
+                        <span className="truncate text-muted">· {c.username ?? c.name}</span>
+                        <span className="ml-auto truncate text-xs text-muted">
+                          {summary.length ? summary.join(' · ') : c.platform === 'INSTAGRAM' ? 'Story, collaborators, tags, first comment' : 'First comment'}
+                        </span>
+                      </summary>
+                      <div className="border-t border-line p-2">
+                        <ChannelOptions channel={c} options={o} media={e.media} caption={e.caption} disabled={locked} onChange={(patch) => setOptions(c.id, patch)} />
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            )
+          )}
+
           {/* Issues */}
           {active ? (
             <IssueList issues={activeIssues} />
@@ -650,7 +754,13 @@ export function Composer({
             ))}
           </div>
           {previewChannel && previewContent ? (
-            <PostPreview channel={previewChannel} caption={previewContent.caption} media={previewContent.media} linkUrl={previewContent.linkUrl} />
+            <PostPreview
+              channel={previewChannel}
+              caption={previewContent.caption}
+              media={previewContent.media}
+              linkUrl={previewContent.linkUrl}
+              options={optionsFor(previewChannel.id)}
+            />
           ) : (
             <p className="py-10 text-center text-[13px] text-muted">Choose a channel to see a preview.</p>
           )}

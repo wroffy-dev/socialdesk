@@ -26,7 +26,7 @@ test('a user cannot read another workspace by URL or API', async ({ browser }) =
 
   await pageB.goto(`/w/${slugA}/home`);
   await expect(pageB.getByText(/could not be found|404/i).first()).toBeVisible();
-  for (const path of ['', '/posts', '/media', '/channels', '/members', '/insights', '/calendar?from=2026-01-01T00:00:00Z&to=2026-01-20T00:00:00Z']) {
+  for (const path of ['', '/posts', '/media', '/channels', '/projects', '/members', '/insights', '/calendar?from=2026-01-01T00:00:00Z&to=2026-01-20T00:00:00Z']) {
     const res = await pageB.request.get(`/api/w/${idA}${path}`);
     expect(res.status(), path).toBe(404);
   }

@@ -29,10 +29,10 @@ export async function listPublicPlans() {
 export async function getBilling(ctx: WorkspaceCtx) {
   assertCan(ctx, 'billing.view');
   const wsId = ctx.workspace.id;
-  const [plan, sub, channels, members, pendingInvites, published, scheduledThisMonth, owned, invoices, payments, plans] = await Promise.all([
+  const [plan, sub, projects, members, pendingInvites, published, scheduledThisMonth, owned, invoices, payments, plans] = await Promise.all([
     getWorkspacePlan(wsId),
     db.subscription.findUnique({ where: { workspaceId: wsId }, include: { plan: true } }),
-    db.socialAccount.count({ where: { workspaceId: wsId, status: { not: 'DISCONNECTED' } } }),
+    db.project.count({ where: { workspaceId: wsId } }),
     db.workspaceMember.count({ where: { workspaceId: wsId } }),
     db.invitation.count({ where: { workspaceId: wsId, status: 'PENDING', expiresAt: { gt: new Date() } } }),
     getUsage(wsId, 'posts_published'),
@@ -61,7 +61,7 @@ export async function getBilling(ctx: WorkspaceCtx) {
         }
       : null,
     usage: [
-      usage('social_accounts', channels),
+      usage('projects', projects),
       usage('team_members', members + pendingInvites),
       usage('posts_per_month', published + scheduledThisMonth),
       { key: 'workspaces', label: ENTITLEMENT_LABEL.workspaces, used: owned.owned, limit: owned.limit },

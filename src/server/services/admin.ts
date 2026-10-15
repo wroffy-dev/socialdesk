@@ -130,7 +130,7 @@ export async function listWorkspaces(q: string | undefined, page = 1) {
         createdAt: true,
         subscription: { select: { status: true, provider: true, plan: { select: { key: true, name: true } } } },
         members: { where: { role: 'OWNER' }, take: 1, select: { user: { select: { email: true } } } },
-        _count: { select: { members: true, socialAccounts: { where: { status: { not: 'DISCONNECTED' } } }, posts: true } },
+        _count: { select: { members: true, projects: true, socialAccounts: { where: { status: { not: 'DISCONNECTED' } } }, posts: true } },
       },
     }),
   ]);

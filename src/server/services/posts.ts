@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { MediaAsset, PlatformPostStatus, PostStatus, Prisma, PublishMode, SocialPlatform } from '@prisma/client';
+import { Prisma, type MediaAsset, type PlatformPostStatus, type PostStatus, type PublishMode, type SocialPlatform } from '@prisma/client';
 import { db, type Tx } from '../db';
 import { badRequest, conflict, forbidden, notFound, validationError } from '../errors';
 import { audit } from '../audit';
@@ -8,6 +8,7 @@ import { enqueuePublish, removePublishJobs } from '../queue/producer';
 import { refreshPostStatus } from '../publishing/status';
 import { errorsOnly, inferFormat, validateVersion, type Issue, type MediaFacts } from '@/lib/platforms';
 import { isValidTimezone } from '@/lib/timezones';
+import { isDefaultOptions, normalizeOptions, versionOptionsSchema } from '@/lib/post-options';
 import { toDto as mediaDto } from './media';
 import { assertWithinLimit, getUsage, getWorkspacePlan, monthStart } from './entitlements';
 import { nextFreeQueueSlot } from './queue';
@@ -26,6 +27,7 @@ export const versionInputSchema = z.object({
   caption: z.string().max(70_000).default(''),
   mediaIds: z.array(id).max(10).default([]),
   linkUrl: url.nullable().optional(),
+  options: versionOptionsSchema.optional(),
 });
 
 export const scheduleActionSchema = z.discriminatedUnion('type', [
@@ -43,6 +45,8 @@ export const scheduleActionSchema = z.discriminatedUnion('type', [
 ]);
 
 export const postInputSchema = z.object({
+  /** The project the post belongs to. When omitted it is taken from the chosen channels (or kept on edit). */
+  projectId: id.optional(),
   baseCaption: z.string().max(70_000).default(''),
   baseMediaIds: z.array(id).max(10).default([]),
   baseLinkUrl: url.nullable().optional(),
@@ -65,12 +69,13 @@ const MAX_AHEAD_MS = 366 * 24 * 60 * 60 * 1000;
 // ---------------------------------------------------------------------------
 
 const detailInclude = {
+  project: { select: { id: true, name: true, color: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   tags: { include: { tag: true } },
   versions: {
     orderBy: { createdAt: 'asc' },
     include: {
-      socialAccount: { select: { id: true, name: true, username: true, avatarUrl: true, platform: true, status: true, mode: true } },
+      socialAccount: { select: { id: true, projectId: true, name: true, username: true, avatarUrl: true, platform: true, status: true, mode: true } },
       media: { orderBy: { position: 'asc' }, include: { mediaAsset: true } },
       attempts: { orderBy: { attemptNumber: 'desc' }, take: 10 },
     },
@@ -120,6 +125,8 @@ export function effectiveContent(
 export function toPostDto(post: PostWithDetail, baseMedia: Map<string, MediaAsset>) {
   return {
     id: post.id,
+    projectId: post.projectId,
+    project: { id: post.project.id, name: post.project.name, color: post.project.color },
     status: post.status,
     baseCaption: post.baseCaption,
     baseMediaIds: post.baseMediaIds,
@@ -142,6 +149,8 @@ export function toPostDto(post: PostWithDetail, baseMedia: Map<string, MediaAsse
       caption: v.caption,
       linkUrl: v.linkUrl,
       format: v.format,
+      options: normalizeOptions(v.platform, v.options),
+      firstComment: { id: v.firstCommentId, error: v.firstCommentError, startedAt: v.firstCommentAt?.toISOString() ?? null },
       status: v.status,
       scheduledAt: v.scheduledAt?.toISOString() ?? null,
       publishedAt: v.publishedAt?.toISOString() ?? null,
@@ -196,7 +205,8 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
     const media = v.customized ? v.media.map((m) => m.mediaAsset) : post.baseMediaIds.map((m) => baseMedia.get(m)).filter((m): m is MediaAsset => !!m);
     const caption = v.customized ? v.caption : post.baseCaption;
     const linkUrl = v.customized ? v.linkUrl : post.baseLinkUrl;
-    const issues = validateVersion(v.platform, { caption, linkUrl, media: media.filter((m) => !m.deletedAt).map(toFacts) });
+    const options = normalizeOptions(v.platform, v.options);
+    const issues = validateVersion(v.platform, { caption, linkUrl, media: media.filter((m) => !m.deletedAt).map(toFacts) }, options);
     if (media.some((m) => m.deletedAt)) issues.push({ severity: 'error', message: 'A media file in this post was deleted.' });
     if (v.socialAccount.status !== 'CONNECTED') {
       issues.push({ severity: 'error', message: `${v.socialAccount.name} needs to be reconnected before publishing.` });
@@ -204,8 +214,11 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
       const caps = adapterFor(v.socialAccount).capabilities({ scopes: v.socialAccount.scopes });
       if (!caps.publish) {
         issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to publish. Reconnect it and allow all requested permissions.` });
-      } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }))) {
+      } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }, options))) {
         issues.push({ severity: 'error', message: 'This post format is not supported for this channel.' });
+      }
+      if (options.firstComment.trim() && !caps.firstComment) {
+        issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to comment, so the first comment can't be posted. Reconnect it and allow all requested permissions, or remove the first comment.` });
       }
     }
     return { socialAccountId: v.socialAccountId, platform: v.platform, accountName: v.socialAccount.name, issues };
@@ -249,6 +262,8 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
   if (accountIds.length !== input.versions.length) throw badRequest('Each channel can only appear once.');
   const accounts = await db.socialAccount.findMany({ where: { id: { in: accountIds }, workspaceId: wsId, status: { not: 'DISCONNECTED' } } });
   if (accounts.length !== accountIds.length) throw notFound('Channel');
+  const projectId = await resolveProjectId(wsId, postId, input.projectId, accounts);
+  if (accounts.some((a) => a.projectId !== projectId)) throw badRequest('All channels of a post must belong to its project.');
   const allMediaIds = [...new Set([...input.baseMediaIds, ...input.versions.flatMap((v) => v.mediaIds)])];
   const media = await loadMediaMap(wsId, allMediaIds);
   if (media.size !== allMediaIds.length) throw notFound('Media');
@@ -271,6 +286,7 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
       await tx.socialPost.update({
         where: { id: existing.id },
         data: {
+          projectId,
           baseCaption: input.baseCaption,
           baseMediaIds: input.baseMediaIds,
           baseLinkUrl: input.baseLinkUrl ?? null,
@@ -286,6 +302,7 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
       post = await tx.socialPost.create({
         data: {
           workspaceId: wsId,
+          projectId,
           createdById: ctx.user.id,
           baseCaption: input.baseCaption,
           baseMediaIds: input.baseMediaIds,
@@ -302,16 +319,18 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
         { baseCaption: input.baseCaption, baseMediaIds: input.baseMediaIds, baseLinkUrl: input.baseLinkUrl ?? null },
         { customized: v.customized, caption: v.caption, linkUrl: v.linkUrl ?? null, mediaIds: v.mediaIds },
       );
-      const format = inferFormat(account.platform, {
-        caption: content.caption,
-        linkUrl: content.linkUrl,
-        media: content.mediaIds.map((m) => toFacts(media.get(m)!)),
-      });
+      const options = normalizeOptions(account.platform, v.options);
+      const format = inferFormat(
+        account.platform,
+        { caption: content.caption, linkUrl: content.linkUrl, media: content.mediaIds.map((m) => toFacts(media.get(m)!)) },
+        options,
+      );
       const data = {
         customized: v.customized,
         caption: v.customized ? v.caption : '',
         linkUrl: v.customized ? (v.linkUrl ?? null) : null,
         format,
+        options: isDefaultOptions(options) ? Prisma.DbNull : (options as Prisma.InputJsonValue),
       };
       const version = await tx.platformPost.upsert({
         where: { postId_socialAccountId: { postId: post.id, socialAccountId: v.socialAccountId } },
@@ -343,6 +362,27 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
     metadata: { action: action.type },
   });
   return getPost(ctx, result.postId);
+}
+
+/**
+ * The project a saved post belongs to: the one asked for, else the existing post's (on edit), else
+ * the chosen channels' project, else the workspace's first project.
+ */
+async function resolveProjectId(workspaceId: string, postId: string | null, requested: string | undefined, accounts: { projectId: string }[]) {
+  if (requested) {
+    const p = await db.project.findFirst({ where: { id: requested, workspaceId }, select: { id: true } });
+    if (!p) throw notFound('Project');
+    return p.id;
+  }
+  if (postId) {
+    const existing = await db.socialPost.findFirst({ where: { id: postId, workspaceId }, select: { projectId: true } });
+    if (!existing) throw notFound('Post');
+    return existing.projectId;
+  }
+  if (accounts[0]) return accounts[0].projectId;
+  const first = await db.project.findFirst({ where: { workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true } });
+  if (!first) throw badRequest('Create a project first.');
+  return first.id;
 }
 
 /** Moves a post (and its versions) into the state the action asks for. Runs inside the save transaction. */
@@ -501,9 +541,10 @@ export async function cancelPost(ctx: WorkspaceCtx, postId: string, toDraft = fa
 export async function duplicatePost(ctx: WorkspaceCtx, postId: string) {
   assertCan(ctx, 'posts.edit');
   const src = await loadPost(ctx, postId);
-  const activeAccounts = src.versions.filter((v) => v.socialAccount.status !== 'DISCONNECTED');
+  const activeAccounts = src.versions.filter((v) => v.socialAccount.status !== 'DISCONNECTED' && v.socialAccount.projectId === src.projectId);
   const liveMedia = await loadMediaMap(ctx.workspace.id, [...src.baseMediaIds, ...src.versions.flatMap((v) => v.media.map((m) => m.mediaAssetId))]);
   return createPost(ctx, {
+    projectId: src.projectId,
     baseCaption: src.baseCaption,
     baseMediaIds: src.baseMediaIds.filter((m) => liveMedia.has(m)),
     baseLinkUrl: src.baseLinkUrl,
@@ -515,6 +556,7 @@ export async function duplicatePost(ctx: WorkspaceCtx, postId: string) {
       caption: v.caption,
       linkUrl: v.linkUrl,
       mediaIds: v.media.map((m) => m.mediaAssetId).filter((m) => liveMedia.has(m)),
+      options: normalizeOptions(v.platform, v.options),
     })),
     action: { type: 'draft' },
   });
@@ -604,6 +646,7 @@ const csv = z
 export const listPostsSchema = z.object({
   tab: z.enum(POST_TABS).default('all'),
   q: z.string().trim().max(100).optional(),
+  projects: csv,
   channels: csv,
   tags: csv,
   page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -611,6 +654,7 @@ export const listPostsSchema = z.object({
 });
 
 const listInclude = {
+  project: { select: { id: true, name: true, color: true } },
   tags: { include: { tag: true } },
   createdBy: { select: { name: true, email: true } },
   versions: {
@@ -641,6 +685,7 @@ async function toListItems(workspaceId: string, rows: ListRow[]) {
     const caption = r.baseCaption || r.versions.find((v) => v.customized && v.caption)?.caption || '';
     return {
       id: r.id,
+      project: r.project,
       status: r.status,
       caption,
       scheduledAt: r.scheduledAt?.toISOString() ?? null,
@@ -675,6 +720,7 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
     ...(q.q
       ? { OR: [{ baseCaption: { contains: q.q, mode: 'insensitive' } }, { versions: { some: { caption: { contains: q.q, mode: 'insensitive' } } } }] }
       : {}),
+    ...(q.projects.length ? { projectId: { in: q.projects } } : {}),
     ...(q.channels.length ? { versions: { some: { socialAccountId: { in: q.channels } } } } : {}),
     ...(q.tags.length ? { tags: { some: { tagId: { in: q.tags } } } } : {}),
   };
@@ -683,7 +729,11 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
   const [total, rows, counts] = await Promise.all([
     db.socialPost.count({ where }),
     db.socialPost.findMany({ where, orderBy, skip: (q.page - 1) * q.pageSize, take: q.pageSize, include: listInclude }),
-    db.socialPost.groupBy({ by: ['status'], where: { workspaceId: ctx.workspace.id }, _count: { _all: true } }),
+    db.socialPost.groupBy({
+      by: ['status'],
+      where: { workspaceId: ctx.workspace.id, ...(q.projects.length ? { projectId: { in: q.projects } } : {}) },
+      _count: { _all: true },
+    }),
   ]);
   const byStatus = Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<PostStatus, number>>;
   const tabCounts = Object.fromEntries(
@@ -695,6 +745,7 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
 export const calendarSchema = z.object({
   from: z.string().datetime({ offset: true }),
   to: z.string().datetime({ offset: true }),
+  projects: csv,
   channels: csv,
   tags: csv,
   statuses: csv,
@@ -715,6 +766,7 @@ export async function listCalendar(ctx: WorkspaceCtx, raw: unknown) {
       workspaceId: ctx.workspace.id,
       scheduledAt: { gte: from, lt: to },
       status: statuses.length ? { in: statuses } : { not: 'DRAFT' },
+      ...(q.projects.length ? { projectId: { in: q.projects } } : {}),
       ...(q.channels.length ? { versions: { some: { socialAccountId: { in: q.channels } } } } : {}),
       ...(q.tags.length ? { tags: { some: { tagId: { in: q.tags } } } } : {}),
     },

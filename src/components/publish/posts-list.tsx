@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileText, Layers, Search, Tag } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileText, FolderKanban, Layers, Search, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState, Skeleton } from '@/components/ui/feedback';
@@ -43,13 +43,15 @@ const col = createColumnHelper<PostListItem>();
 
 export function PostsList({
   workspace,
+  projects,
   channels,
   tags,
   canEdit,
   canPublish,
 }: {
   workspace: { id: string; slug: string; timezone: string };
-  channels: { id: string; name: string; username: string | null; avatarUrl: string | null; platform: 'INSTAGRAM' | 'FACEBOOK' }[];
+  projects: { id: string; name: string; color: string }[];
+  channels: { id: string; projectId: string; name: string; username: string | null; avatarUrl: string | null; platform: 'INSTAGRAM' | 'FACEBOOK' }[];
   tags: { id: string; name: string; color: string }[];
   canEdit: boolean;
   canPublish: boolean;
@@ -60,6 +62,7 @@ export function PostsList({
   const tab = (TABS.some(([k]) => k === sp.get('tab')) ? sp.get('tab') : 'all') as TabKey;
   const page = Math.max(1, Number(sp.get('page') ?? 1) || 1);
   const [q, setQ] = useState(sp.get('q') ?? '');
+  const [projectFilter, setProjectFilter] = useState<string[]>(() => (sp.get('project') ? [sp.get('project')!] : []));
   const [channelFilter, setChannelFilter] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [data, setData] = useState<ListResponse | null>(null);
@@ -88,6 +91,7 @@ export function PostsList({
     let cancelled = false;
     const params = new URLSearchParams({ tab, page: String(page), pageSize: '20' });
     if (sp.get('q')) params.set('q', sp.get('q')!);
+    if (projectFilter.length) params.set('projects', projectFilter.join(','));
     if (channelFilter.length) params.set('channels', channelFilter.join(','));
     if (tagFilter.length) params.set('tags', tagFilter.join(','));
     setData((d) => (d ? { ...d, items: d.items } : d));
@@ -97,7 +101,7 @@ export function PostsList({
     return () => {
       cancelled = true;
     };
-  }, [workspace.id, tab, page, sp, channelFilter, tagFilter, reload]);
+  }, [workspace.id, tab, page, sp, projectFilter, channelFilter, tagFilter, reload]);
 
   const columns = useMemo(
     () => [
@@ -111,8 +115,14 @@ export function PostsList({
               <MediaThumb media={p.thumb} className="size-11 shrink-0" />
               <div className="min-w-0">
                 <p className="line-clamp-2 text-[13px]">{p.caption || <span className="italic text-muted">No text</span>}</p>
-                {p.tags.length > 0 && (
+                {(projects.length > 1 || p.tags.length > 0) && (
                   <div className="mt-1 flex flex-wrap gap-1">
+                    {projects.length > 1 && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-line px-1.5 text-2xs text-muted">
+                        <span className="size-1.5 rounded-full" style={{ background: p.project.color }} />
+                        {p.project.name}
+                      </span>
+                    )}
                     {p.tags.map((t) => (
                       <span key={t.id} className="inline-flex items-center gap-1 rounded-full bg-subtle px-1.5 text-2xs text-muted">
                         <span className="size-1.5 rounded-full" style={{ background: t.color }} />
@@ -184,7 +194,7 @@ export function PostsList({
         },
       }),
     ],
-    [workspace, canEdit, canPublish],
+    [workspace, canEdit, canPublish, projects.length],
   );
 
   const table = useReactTable({ data: data?.items ?? [], columns, getCoreRowModel: getCoreRowModel() });
@@ -219,10 +229,25 @@ export function PostsList({
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search captions" className="pl-8" aria-label="Search captions" />
         </div>
+        {projects.length > 1 && (
+          <FilterMenu
+            icon={<FolderKanban />}
+            label="Projects"
+            options={projects.map((p) => ({ id: p.id, label: p.name, color: p.color }))}
+            value={projectFilter}
+            onChange={(v) => {
+              setProjectFilter(v);
+              setChannelFilter([]);
+              setParam({ page: null, project: null });
+            }}
+          />
+        )}
         <FilterMenu
           icon={<Layers />}
           label="Channels"
-          options={channels.map((c) => ({ id: c.id, label: c.username ?? c.name }))}
+          options={channels
+            .filter((c) => projectFilter.length === 0 || projectFilter.includes(c.projectId))
+            .map((c) => ({ id: c.id, label: c.username ?? c.name }))}
           value={channelFilter}
           onChange={(v) => {
             setChannelFilter(v);
@@ -250,7 +275,7 @@ export function PostsList({
       ) : data.items.length === 0 ? (
         <EmptyState
           icon={<FileText />}
-          title={sp.get('q') || channelFilter.length || tagFilter.length ? 'No posts match your filters' : `No ${tab === 'all' ? '' : TABS.find(([k]) => k === tab)![1].toLowerCase() + ' '}posts`}
+          title={sp.get('q') || projectFilter.length || channelFilter.length || tagFilter.length ? 'No posts match your filters' : `No ${tab === 'all' ? '' : TABS.find(([k]) => k === tab)![1].toLowerCase() + ' '}posts`}
           description={tab === 'failed' ? 'Posts that fail to publish appear here with the reason and a retry option.' : undefined}
           action={
             canEdit &&

@@ -27,6 +27,7 @@ export class FacebookAdapter implements SocialAdapter {
       analytics: has('read_insights'),
       comments: has('pages_read_user_content') || has('pages_read_engagement'),
       replyToComments: has('pages_manage_engagement'),
+      firstComment: has('pages_manage_engagement'),
       // Page messaging requires separate Messenger permissions and review; not supported yet.
       directMessages: false,
       missing,
@@ -182,6 +183,11 @@ export class FacebookAdapter implements SocialAdapter {
       postedAt: c.created_time,
       isOwn: c.from?.id === account.externalId,
     }));
+  }
+
+  async postComment(account: AccountRef, externalPostId: string, text: string) {
+    const res = await this.graph.post<{ id: string }>(`${externalPostId}/comments`, account.accessToken, { message: text }, true);
+    return { externalId: res.id };
   }
 
   async replyToComment(account: AccountRef, commentExternalId: string, text: string) {

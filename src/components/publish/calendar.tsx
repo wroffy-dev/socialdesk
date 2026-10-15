@@ -9,7 +9,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { Draggable } from '@fullcalendar/interaction';
 import type { DatesSetArg, EventContentArg, EventDropArg, EventInput, EventSourceFuncArg } from '@fullcalendar/core';
 import type { DateClickArg, EventReceiveArg } from '@fullcalendar/interaction';
-import { ChevronDown, ChevronLeft, ChevronRight, Globe, Layers, PanelRightOpen, Tag, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, FolderKanban, Globe, Layers, PanelRightOpen, Tag, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -42,6 +42,7 @@ const VIEW_KEY = 'sd_calendar_view';
 
 interface Channel {
   id: string;
+  projectId: string;
   name: string;
   username: string | null;
   avatarUrl: string | null;
@@ -50,18 +51,22 @@ interface Channel {
 
 export function PublishCalendar({
   workspace,
+  projects,
   channels,
   tags,
   canPublish,
   canCreate,
   initialChannel,
+  initialProject,
 }: {
   workspace: { id: string; slug: string; timezone: string };
+  projects: { id: string; name: string; color: string }[];
   channels: Channel[];
   tags: { id: string; name: string; color: string }[];
   canPublish: boolean;
   canCreate: boolean;
   initialChannel: string | null;
+  initialProject: string | null;
 }) {
   const router = useRouter();
   const calRef = useRef<FullCalendar>(null);
@@ -72,6 +77,7 @@ export function PublishCalendar({
 
   const [view, setView] = useState<View>('timeGridWeek');
   const [title, setTitle] = useState('');
+  const [projectFilter, setProjectFilter] = useState<string | null>(initialProject);
   const [channelFilter, setChannelFilter] = useState<string[]>(initialChannel ? [initialChannel] : []);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<keyof typeof STATUS_FILTERS>('all');
@@ -92,6 +98,14 @@ export function PublishCalendar({
   }, []);
 
   useEffect(() => setChannelFilter(initialChannel ? [initialChannel] : []), [initialChannel]);
+  useEffect(() => setProjectFilter(initialProject), [initialProject]);
+  const currentProject = projects.find((p) => p.id === projectFilter) ?? null;
+  const visibleChannels = projectFilter ? channels.filter((c) => c.projectId === projectFilter) : channels;
+  const selectProject = (id: string | null) => {
+    setProjectFilter(id);
+    setChannelFilter([]);
+    setDrafts(null);
+  };
 
   const fetchEvents = useCallback(
     async (info: EventSourceFuncArg): Promise<EventInput[]> => {
@@ -99,6 +113,7 @@ export function PublishCalendar({
         from: fromFloating(info.start, tz).toISOString(),
         to: fromFloating(info.end, tz).toISOString(),
       });
+      if (projectFilter) params.set('projects', projectFilter);
       if (channelFilter.length) params.set('channels', channelFilter.join(','));
       if (tagFilter.length) params.set('tags', tagFilter.join(','));
       if (STATUS_FILTERS[statusFilter].statuses) params.set('statuses', STATUS_FILTERS[statusFilter].statuses);
@@ -116,7 +131,7 @@ export function PublishCalendar({
         };
       });
     },
-    [apiBase, tz, channelFilter, tagFilter, statusFilter, canPublish],
+    [apiBase, tz, projectFilter, channelFilter, tagFilter, statusFilter, canPublish],
   );
 
   // Refetch when filters change (FullCalendar already fetches on mount).
@@ -130,9 +145,9 @@ export function PublishCalendar({
   }, [fetchEvents]);
 
   const loadDrafts = useCallback(async () => {
-    const res = await api<{ items: PostListItem[] }>(`${apiBase}/posts?tab=drafts&pageSize=50`);
+    const res = await api<{ items: PostListItem[] }>(`${apiBase}/posts?tab=drafts&pageSize=50${projectFilter ? `&projects=${projectFilter}` : ''}`);
     setDrafts(res.items);
-  }, [apiBase]);
+  }, [apiBase, projectFilter]);
 
   useEffect(() => {
     if (showDrafts && drafts === null) void loadDrafts();
@@ -208,7 +223,7 @@ export function PublishCalendar({
     if (info.allDay) floating = new Date(Date.UTC(floating.getUTCFullYear(), floating.getUTCMonth(), floating.getUTCDate(), 10, 0));
     const at = fromFloating(floating, tz);
     if (at.getTime() < Date.now() + 5 * 60_000) return;
-    router.push(`${base}/compose?date=${encodeURIComponent(at.toISOString())}`);
+    router.push(`${base}/compose?date=${encodeURIComponent(at.toISOString())}${projectFilter ? `&project=${projectFilter}` : ''}`);
   };
 
   const apiCal = () => calRef.current?.getApi();
@@ -257,6 +272,34 @@ export function PublishCalendar({
         {loading && <Spinner />}
 
         <div className="ml-auto flex flex-wrap items-center gap-1">
+          {projects.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className={cn(projectFilter && 'bg-accent-soft text-accent-ink')}>
+                  {currentProject ? (
+                    <>
+                      <span className="size-2.5 rounded-full" style={{ background: currentProject.color }} /> {currentProject.name}
+                    </>
+                  ) : (
+                    <>
+                      <FolderKanban /> All projects
+                    </>
+                  )}
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuRadioGroup value={projectFilter ?? ''} onValueChange={(v) => selectProject(v || null)}>
+                  <DropdownMenuRadioItem value="">All projects</DropdownMenuRadioItem>
+                  {projects.map((p) => (
+                    <DropdownMenuRadioItem key={p.id} value={p.id}>
+                      <span className="size-2.5 rounded-full" style={{ background: p.color }} /> {p.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className={cn(channelFilter.length && 'bg-accent-soft text-accent-ink')}>
@@ -265,8 +308,8 @@ export function PublishCalendar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel>Show channels</DropdownMenuLabel>
-              {channels.length === 0 && <p className="px-2 py-1.5 text-xs text-muted">No channels connected.</p>}
-              {channels.map((c) => (
+              {visibleChannels.length === 0 && <p className="px-2 py-1.5 text-xs text-muted">No channels connected.</p>}
+              {visibleChannels.map((c) => (
                 <DropdownMenuCheckboxItem
                   key={c.id}
                   checked={channelFilter.includes(c.id)}

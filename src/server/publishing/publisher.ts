@@ -11,6 +11,7 @@ import { isQueuePaused } from '../services/queue';
 import { notifyPublished, notifyPublishProblem } from '../services/notifications';
 import { refreshPostStatus } from './status';
 import { buildPublishInput } from './input';
+import { postFirstComment } from './first-comment';
 import { errorsOnly } from '@/lib/platforms';
 
 export type PublishOutcome =
@@ -142,6 +143,8 @@ export async function processPublish(platformPostId: string, opts: { workerId: s
         await incrementUsage(version.workspaceId, 'posts_published', 1, tx);
         await refreshPostStatus(version.postId, tx);
       });
+      // The first comment never affects the post's own outcome; failures are shown on the post page.
+      await postFirstComment(version.id).catch((e) => console.error('[publisher] first comment failed', e));
       await notifyPublished(version.id).catch((e) => console.error('[publisher] notification failed', e));
       return 'published';
     } catch (err) {

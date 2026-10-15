@@ -17,6 +17,7 @@ browser ──HTTPS──▶ web (Next.js)  ──▶ PostgreSQL (source of trut
 ## Tenancy and authorisation
 
 - A **user** can belong to many **workspaces** through `WorkspaceMember` (role: Owner, Admin, Publisher, Analyst). Every tenant-owned table has `workspaceId`.
+- A workspace holds **projects** (one per brand or client). Each project links **at most one Instagram account and one Facebook Page**, and an account can be active in only one project of a workspace. Linking happens inside a transaction that row-locks the project, so concurrent connections can't fill a slot twice. Every post belongs to a project and may only use that project's channels. A new workspace starts with one project named after it; the last project can't be deleted, and a project can only be deleted once its channels are disconnected (its posts are deleted with it).
 - `src/lib/permissions.ts` is the single permission matrix. The UI uses it only to hide controls; the server enforces it in every service with `assertCan(ctx, permission)`.
 - A `WorkspaceCtx` is built only from the signed-in user's membership (`loadCtx`), never from an id the browser supplies alone. Non-members get **404**, so other workspaces' existence isn't revealed.
 - Every service query filters by `ctx.workspace.id`; referenced ids (channels, media, tags, posts) are re-checked to belong to the same workspace. Integration tests cover cross-tenant reads, edits, deletes and publishes; Playwright tests repeat the key checks over HTTP.
@@ -67,4 +68,4 @@ DRAFT ──schedule/queue/publish now──▶ SCHEDULED ──claim──▶ P
 
 ## Plans and limits
 
-Plans and entitlements live in the database (seeded from `src/server/billing/catalog.ts`, then edited in the admin panel). Limits are enforced server-side: connected channels, team seats (members + pending invitations), owned workspaces, posts per month (published + scheduled in that month), analytics history and CSV export. Paid plans change only when a signature-verified, de-duplicated Razorpay webhook says so; the browser checkout callback is only a hint.
+Plans and entitlements live in the database (seeded from `src/server/billing/catalog.ts`, then edited in the admin panel). Limits are enforced server-side: projects (Free 2, Pro 5, Business 10, Agency 20 by default — channels follow from projects, one Instagram + one Facebook each), team seats (members + pending invitations), owned workspaces, posts per month (published + scheduled in that month), analytics history and CSV export. Paid plans change only when a signature-verified, de-duplicated Razorpay webhook says so; the browser checkout callback is only a hint.

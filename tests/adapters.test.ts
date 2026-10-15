@@ -6,6 +6,7 @@ import { AdapterError, type PublishInput } from '@/server/adapters/types';
 import { parseSignedRequest } from '@/server/integrations/meta-signed-request';
 import { createHmac } from 'node:crypto';
 import { fakeGraph } from './helpers/fake-graph';
+import { DEFAULT_OPTIONS } from '@/lib/post-options';
 
 const account = { id: 'acc', externalId: '1789', accessToken: 'tok', metadata: {}, scopes: ['instagram_basic', 'instagram_content_publish', 'pages_manage_posts'] };
 const hooks = () => {
@@ -21,6 +22,7 @@ const input = (over: Partial<PublishInput>): PublishInput => ({
   media: [],
   idempotencyKey: 'key-1',
   providerState: null,
+  options: DEFAULT_OPTIONS,
   ...over,
 });
 const img = (id: string) => ({ id, kind: 'IMAGE' as const, mimeType: 'image/jpeg', url: `https://app.test/m/${id}`, durationSec: null });

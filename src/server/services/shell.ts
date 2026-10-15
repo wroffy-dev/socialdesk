@@ -2,17 +2,18 @@ import { db } from '../db';
 import type { WorkspaceCtx } from '../auth/ctx';
 import { permissionsFor } from '@/lib/permissions';
 import { listUserWorkspaces } from './workspaces';
-import { getWorkspacePlan } from './entitlements';
+import { getWorkspacePlan, limitOf } from './entitlements';
 
 /** Data the sidebar needs on every workspace page. */
 export async function getShellData(ctx: WorkspaceCtx, user: { isSuperAdmin: boolean; image: string | null }) {
   const wsId = ctx.workspace.id;
-  const [workspaces, channels, perChannel, scheduled, unanswered, plan] = await Promise.all([
+  const [workspaces, projects, channels, perChannel, scheduled, unanswered, plan] = await Promise.all([
     listUserWorkspaces(ctx.user.id),
+    db.project.findMany({ where: { workspaceId: wsId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, name: true, color: true } }),
     db.socialAccount.findMany({
       where: { workspaceId: wsId, status: { not: 'DISCONNECTED' } },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, username: true, platform: true, avatarUrl: true, status: true },
+      select: { id: true, projectId: true, name: true, username: true, platform: true, avatarUrl: true, status: true },
     }),
     db.platformPost.groupBy({
       by: ['socialAccountId'],
@@ -24,13 +25,20 @@ export async function getShellData(ctx: WorkspaceCtx, user: { isSuperAdmin: bool
     getWorkspacePlan(wsId),
   ]);
   const counts = new Map(perChannel.map((r) => [r.socialAccountId, r._count._all]));
+  const withCounts = channels.map((c) => ({ ...c, scheduled: counts.get(c.id) ?? 0 }));
   return {
     user: { ...ctx.user, image: user.image, isSuperAdmin: user.isSuperAdmin, emailVerified: !!ctx.user.emailVerified },
     workspace: { ...ctx.workspace, planName: plan.planName },
     role: ctx.role,
     permissions: permissionsFor(ctx.role),
     workspaces,
-    channels: channels.map((c) => ({ ...c, scheduled: counts.get(c.id) ?? 0 })),
+    channels: withCounts,
+    projects: projects.map((p) => ({
+      ...p,
+      instagram: withCounts.find((c) => c.projectId === p.id && c.platform === 'INSTAGRAM') ?? null,
+      facebook: withCounts.find((c) => c.projectId === p.id && c.platform === 'FACEBOOK') ?? null,
+    })),
+    projectLimit: limitOf(plan, 'projects'),
     counts: { scheduled, unanswered },
   };
 }
