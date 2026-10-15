@@ -43,6 +43,8 @@ export const scheduleActionSchema = z.discriminatedUnion('type', [
 ]);
 
 export const postInputSchema = z.object({
+  /** The project the post belongs to. When omitted it is taken from the chosen channels (or kept on edit). */
+  projectId: id.optional(),
   baseCaption: z.string().max(70_000).default(''),
   baseMediaIds: z.array(id).max(10).default([]),
   baseLinkUrl: url.nullable().optional(),
@@ -65,12 +67,13 @@ const MAX_AHEAD_MS = 366 * 24 * 60 * 60 * 1000;
 // ---------------------------------------------------------------------------
 
 const detailInclude = {
+  project: { select: { id: true, name: true, color: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   tags: { include: { tag: true } },
   versions: {
     orderBy: { createdAt: 'asc' },
     include: {
-      socialAccount: { select: { id: true, name: true, username: true, avatarUrl: true, platform: true, status: true, mode: true } },
+      socialAccount: { select: { id: true, projectId: true, name: true, username: true, avatarUrl: true, platform: true, status: true, mode: true } },
       media: { orderBy: { position: 'asc' }, include: { mediaAsset: true } },
       attempts: { orderBy: { attemptNumber: 'desc' }, take: 10 },
     },
@@ -120,6 +123,8 @@ export function effectiveContent(
 export function toPostDto(post: PostWithDetail, baseMedia: Map<string, MediaAsset>) {
   return {
     id: post.id,
+    projectId: post.projectId,
+    project: { id: post.project.id, name: post.project.name, color: post.project.color },
     status: post.status,
     baseCaption: post.baseCaption,
     baseMediaIds: post.baseMediaIds,
@@ -249,6 +254,8 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
   if (accountIds.length !== input.versions.length) throw badRequest('Each channel can only appear once.');
   const accounts = await db.socialAccount.findMany({ where: { id: { in: accountIds }, workspaceId: wsId, status: { not: 'DISCONNECTED' } } });
   if (accounts.length !== accountIds.length) throw notFound('Channel');
+  const projectId = await resolveProjectId(wsId, postId, input.projectId, accounts);
+  if (accounts.some((a) => a.projectId !== projectId)) throw badRequest('All channels of a post must belong to its project.');
   const allMediaIds = [...new Set([...input.baseMediaIds, ...input.versions.flatMap((v) => v.mediaIds)])];
   const media = await loadMediaMap(wsId, allMediaIds);
   if (media.size !== allMediaIds.length) throw notFound('Media');
@@ -271,6 +278,7 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
       await tx.socialPost.update({
         where: { id: existing.id },
         data: {
+          projectId,
           baseCaption: input.baseCaption,
           baseMediaIds: input.baseMediaIds,
           baseLinkUrl: input.baseLinkUrl ?? null,
@@ -286,6 +294,7 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
       post = await tx.socialPost.create({
         data: {
           workspaceId: wsId,
+          projectId,
           createdById: ctx.user.id,
           baseCaption: input.baseCaption,
           baseMediaIds: input.baseMediaIds,
@@ -343,6 +352,27 @@ async function savePost(ctx: WorkspaceCtx, postId: string | null, raw: PostInput
     metadata: { action: action.type },
   });
   return getPost(ctx, result.postId);
+}
+
+/**
+ * The project a saved post belongs to: the one asked for, else the existing post's (on edit), else
+ * the chosen channels' project, else the workspace's first project.
+ */
+async function resolveProjectId(workspaceId: string, postId: string | null, requested: string | undefined, accounts: { projectId: string }[]) {
+  if (requested) {
+    const p = await db.project.findFirst({ where: { id: requested, workspaceId }, select: { id: true } });
+    if (!p) throw notFound('Project');
+    return p.id;
+  }
+  if (postId) {
+    const existing = await db.socialPost.findFirst({ where: { id: postId, workspaceId }, select: { projectId: true } });
+    if (!existing) throw notFound('Post');
+    return existing.projectId;
+  }
+  if (accounts[0]) return accounts[0].projectId;
+  const first = await db.project.findFirst({ where: { workspaceId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true } });
+  if (!first) throw badRequest('Create a project first.');
+  return first.id;
 }
 
 /** Moves a post (and its versions) into the state the action asks for. Runs inside the save transaction. */
@@ -501,9 +531,10 @@ export async function cancelPost(ctx: WorkspaceCtx, postId: string, toDraft = fa
 export async function duplicatePost(ctx: WorkspaceCtx, postId: string) {
   assertCan(ctx, 'posts.edit');
   const src = await loadPost(ctx, postId);
-  const activeAccounts = src.versions.filter((v) => v.socialAccount.status !== 'DISCONNECTED');
+  const activeAccounts = src.versions.filter((v) => v.socialAccount.status !== 'DISCONNECTED' && v.socialAccount.projectId === src.projectId);
   const liveMedia = await loadMediaMap(ctx.workspace.id, [...src.baseMediaIds, ...src.versions.flatMap((v) => v.media.map((m) => m.mediaAssetId))]);
   return createPost(ctx, {
+    projectId: src.projectId,
     baseCaption: src.baseCaption,
     baseMediaIds: src.baseMediaIds.filter((m) => liveMedia.has(m)),
     baseLinkUrl: src.baseLinkUrl,
@@ -604,6 +635,7 @@ const csv = z
 export const listPostsSchema = z.object({
   tab: z.enum(POST_TABS).default('all'),
   q: z.string().trim().max(100).optional(),
+  projects: csv,
   channels: csv,
   tags: csv,
   page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -611,6 +643,7 @@ export const listPostsSchema = z.object({
 });
 
 const listInclude = {
+  project: { select: { id: true, name: true, color: true } },
   tags: { include: { tag: true } },
   createdBy: { select: { name: true, email: true } },
   versions: {
@@ -641,6 +674,7 @@ async function toListItems(workspaceId: string, rows: ListRow[]) {
     const caption = r.baseCaption || r.versions.find((v) => v.customized && v.caption)?.caption || '';
     return {
       id: r.id,
+      project: r.project,
       status: r.status,
       caption,
       scheduledAt: r.scheduledAt?.toISOString() ?? null,
@@ -675,6 +709,7 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
     ...(q.q
       ? { OR: [{ baseCaption: { contains: q.q, mode: 'insensitive' } }, { versions: { some: { caption: { contains: q.q, mode: 'insensitive' } } } }] }
       : {}),
+    ...(q.projects.length ? { projectId: { in: q.projects } } : {}),
     ...(q.channels.length ? { versions: { some: { socialAccountId: { in: q.channels } } } } : {}),
     ...(q.tags.length ? { tags: { some: { tagId: { in: q.tags } } } } : {}),
   };
@@ -683,7 +718,11 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
   const [total, rows, counts] = await Promise.all([
     db.socialPost.count({ where }),
     db.socialPost.findMany({ where, orderBy, skip: (q.page - 1) * q.pageSize, take: q.pageSize, include: listInclude }),
-    db.socialPost.groupBy({ by: ['status'], where: { workspaceId: ctx.workspace.id }, _count: { _all: true } }),
+    db.socialPost.groupBy({
+      by: ['status'],
+      where: { workspaceId: ctx.workspace.id, ...(q.projects.length ? { projectId: { in: q.projects } } : {}) },
+      _count: { _all: true },
+    }),
   ]);
   const byStatus = Object.fromEntries(counts.map((c) => [c.status, c._count._all])) as Partial<Record<PostStatus, number>>;
   const tabCounts = Object.fromEntries(
@@ -695,6 +734,7 @@ export async function listPosts(ctx: WorkspaceCtx, raw: unknown) {
 export const calendarSchema = z.object({
   from: z.string().datetime({ offset: true }),
   to: z.string().datetime({ offset: true }),
+  projects: csv,
   channels: csv,
   tags: csv,
   statuses: csv,
@@ -715,6 +755,7 @@ export async function listCalendar(ctx: WorkspaceCtx, raw: unknown) {
       workspaceId: ctx.workspace.id,
       scheduledAt: { gte: from, lt: to },
       status: statuses.length ? { in: statuses } : { not: 'DRAFT' },
+      ...(q.projects.length ? { projectId: { in: q.projects } } : {}),
       ...(q.channels.length ? { versions: { some: { socialAccountId: { in: q.channels } } } } : {}),
       ...(q.tags.length ? { tags: { some: { tagId: { in: q.tags } } } } : {}),
     },

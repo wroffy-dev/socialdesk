@@ -1,6 +1,6 @@
 # SocialDesk
 
-A multi-tenant social media management SaaS: plan, schedule and publish to **Instagram professional accounts** and **Facebook Pages**, with a visual calendar, posting queue, team workspaces, insights, a comments inbox, billing and a super-admin panel.
+A multi-tenant social media management SaaS: plan, schedule and publish to **Instagram professional accounts** and **Facebook Pages**, with projects per brand or client (one Instagram account + one Facebook Page each), a visual calendar, posting queue, team workspaces, insights, a comments inbox, billing and a super-admin panel.
 
 Built for a single VPS with Coolify: Next.js (web) + a separate worker process, PostgreSQL and Redis.
 
@@ -59,7 +59,7 @@ prisma/                 schema, migrations, seed
 src/app/                Next.js routes
   (marketing)/          landing, features, pricing, legal pages
   (auth)/               login, signup, password reset, email verification, invitations
-  w/[slug]/             the app for one workspace (home, create, compose, publish, community, insights, media, channels, settings)
+  w/[slug]/             the app for one workspace (home, create, compose, publish, community, insights, media, channels = projects & channels, settings)
   admin/                super-admin panel
   api/                  route handlers (thin: auth → validate → service)
 src/server/             server-only code

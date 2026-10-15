@@ -57,6 +57,7 @@ export function Sidebar({
   const router = useRouter();
   const connect = useConnectDialog();
   const base = `/w/${data.workspace.slug}`;
+  const atProjectLimit = data.projectLimit !== null && data.projects.length >= data.projectLimit;
 
   const nav = [
     { href: `${base}/home`, label: 'Home', icon: House },
@@ -138,72 +139,90 @@ export function Sidebar({
       <div className={cn('mt-2 flex flex-col gap-1', collapsed && 'items-center')}>
         {!collapsed && (
           <div className="flex items-center justify-between px-2.5 text-[13px] text-muted">
-            <span>Channels</span>
+            <span>Projects</span>
             <span className="flex items-center gap-0.5">
-              <Tooltip content="Manage channels">
-                <Link href={`${base}/channels`} onClick={onNavigate} className="rounded-md p-1 hover:bg-hover hover:text-fg" aria-label="Manage channels">
+              <Tooltip content="Manage projects & channels">
+                <Link href={`${base}/channels`} onClick={onNavigate} className="rounded-md p-1 hover:bg-hover hover:text-fg" aria-label="Manage projects">
                   <Settings2 className="size-4" />
                 </Link>
               </Tooltip>
               {can('channels.manage') && (
-                <Tooltip content="Connect a channel">
-                  <button onClick={connect.open} className="rounded-md p-1 hover:bg-hover hover:text-fg" aria-label="Connect a channel">
+                <Tooltip content={atProjectLimit ? 'Project limit reached' : 'New project'}>
+                  <Link
+                    href={`${base}/channels?new=1`}
+                    onClick={onNavigate}
+                    className="rounded-md p-1 hover:bg-hover hover:text-fg aria-disabled:pointer-events-none aria-disabled:opacity-40"
+                    aria-label="New project"
+                    aria-disabled={atProjectLimit}
+                  >
                     <Plus className="size-4" />
-                  </button>
+                  </Link>
                 </Tooltip>
               )}
             </span>
           </div>
         )}
-        {data.channels.length === 0 && !collapsed && (
-          <p className="px-2.5 py-1 text-[13px] text-faint">No channels connected yet.</p>
+        {data.projects.map((p) => {
+          const href = `${base}/publish?project=${p.id}`;
+          const slots = [
+            { platform: 'INSTAGRAM' as const, channel: p.instagram },
+            { platform: 'FACEBOOK' as const, channel: p.facebook },
+          ];
+          const needsAttention = slots.some((s) => s.channel && s.channel.status !== 'CONNECTED');
+          return (
+            <Tooltip key={p.id} content={p.name} side="right" disabled={!collapsed}>
+              <div className={cn('group flex h-10 items-center gap-2 rounded-lg px-2 hover:bg-hover', collapsed && 'w-10 justify-center px-0')}>
+                <Link href={href} onClick={onNavigate} className={cn('flex min-w-0 flex-1 items-center gap-2.5', collapsed && 'flex-none')} aria-label={`${p.name} posts`}>
+                  <span className="relative flex size-[26px] shrink-0 items-center justify-center rounded-md text-[12px] font-semibold text-white" style={{ background: p.color }}>
+                    {p.name.trim().charAt(0).toUpperCase()}
+                    {needsAttention && <span className="absolute -left-1 -top-1 size-2.5 rounded-full border-2 border-canvas bg-danger" title="A channel needs attention" />}
+                  </span>
+                  {!collapsed && <span className="min-w-0 flex-1 truncate text-[14px]">{p.name}</span>}
+                </Link>
+                {!collapsed &&
+                  slots.map((s) =>
+                    s.channel ? (
+                      <Tooltip key={s.platform} content={`${s.channel.username ? `@${s.channel.username}` : s.channel.name} · ${s.channel.scheduled} scheduled`}>
+                        <Link href={`${base}/publish?channel=${s.channel.id}`} onClick={onNavigate} className="shrink-0" aria-label={`${s.channel.name} posts`}>
+                          <ChannelAvatar name={s.channel.name} avatarUrl={s.channel.avatarUrl} platform={s.channel.platform} size={20} />
+                        </Link>
+                      </Tooltip>
+                    ) : can('channels.manage') ? (
+                      <Tooltip key={s.platform} content={`Connect ${s.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook Page'}`}>
+                        <button
+                          onClick={() => connect.open({ projectId: p.id, platform: s.platform })}
+                          className="shrink-0 opacity-35 transition-opacity hover:opacity-100"
+                          aria-label={`Connect ${s.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} to ${p.name}`}
+                        >
+                          <PlatformIcon platform={s.platform} size={20} />
+                        </button>
+                      </Tooltip>
+                    ) : (
+                      <span key={s.platform} className="shrink-0 opacity-25">
+                        <PlatformIcon platform={s.platform} size={20} muted />
+                      </span>
+                    ),
+                  )}
+              </div>
+            </Tooltip>
+          );
+        })}
+        {!collapsed && data.projectLimit !== null && (
+          <p className="px-2.5 pt-1 text-xs text-faint">
+            {data.projects.length} of {data.projectLimit} projects
+          </p>
         )}
-        {data.channels.map((c) => (
-          <Tooltip key={c.id} content={c.name} side="right" disabled={!collapsed}>
-            <Link
-              href={`${base}/publish?channel=${c.id}`}
-              onClick={onNavigate}
-              className={cn('flex h-10 items-center gap-2.5 rounded-lg px-2 hover:bg-hover', collapsed && 'w-10 justify-center px-0')}
-            >
-              <span className="relative">
-                <ChannelAvatar name={c.name} avatarUrl={c.avatarUrl} platform={c.platform} size={26} />
-                {c.status !== 'CONNECTED' && (
-                  <span className="absolute -left-1 -top-1 size-2.5 rounded-full border-2 border-canvas bg-danger" title="Needs attention" />
-                )}
-              </span>
-              {!collapsed && (
-                <>
-                  <span className="min-w-0 flex-1 truncate text-[14px]">{c.username ?? c.name}</span>
-                  <span className="text-xs tabular-nums text-muted">{c.scheduled}</span>
-                </>
-              )}
-            </Link>
-          </Tooltip>
-        ))}
         {!collapsed && can('channels.manage') && (
           <div className="mt-2 px-2.5">
-            <p className="mb-1.5 text-xs text-muted">Connect more channels</p>
+            <p className="mb-1.5 text-xs text-muted">Coming soon</p>
             <div className="flex items-center gap-1.5">
-              <button onClick={connect.open} className="rounded-md transition-transform hover:scale-105" aria-label="Connect Instagram">
-                <PlatformIcon platform="INSTAGRAM" size={24} />
-              </button>
-              <button onClick={connect.open} className="rounded-md transition-transform hover:scale-105" aria-label="Connect Facebook">
-                <PlatformIcon platform="FACEBOOK" size={24} />
-              </button>
-              {COMING_SOON.slice(0, 2).map((p) => (
+              {COMING_SOON.map((p) => (
                 <Tooltip key={p.key} content={`${p.label} · coming soon`}>
                   <span>
-                    <PlatformIcon platform={p.key} size={24} muted />
+                    <PlatformIcon platform={p.key} size={22} muted />
                   </span>
                 </Tooltip>
               ))}
-              <button
-                onClick={connect.open}
-                className="flex size-6 items-center justify-center rounded-md border border-line bg-surface text-muted hover:text-fg"
-                aria-label="More channels"
-              >
-                <Plus className="size-3.5" />
-              </button>
             </div>
           </div>
         )}

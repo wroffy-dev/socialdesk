@@ -11,11 +11,12 @@ export const metadata = { title: 'Posts' };
 export default async function PostsListPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const ctx = await requireWorkspacePage(slug);
-  const [channels, tags] = await Promise.all([
+  const [projects, channels, tags] = await Promise.all([
+    db.project.findMany({ where: { workspaceId: ctx.workspace.id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, name: true, color: true } }),
     db.socialAccount.findMany({
       where: { workspaceId: ctx.workspace.id, status: { not: 'DISCONNECTED' } },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, username: true, avatarUrl: true, platform: true },
+      select: { id: true, projectId: true, name: true, username: true, avatarUrl: true, platform: true },
     }),
     listTags(ctx),
   ]);
@@ -25,6 +26,7 @@ export default async function PostsListPage({ params }: { params: Promise<{ slug
       <Suspense>
       <PostsList
         workspace={{ id: ctx.workspace.id, slug, timezone: ctx.workspace.timezone }}
+        projects={projects}
         channels={channels}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
         canEdit={hasPermission(ctx, 'posts.edit')}

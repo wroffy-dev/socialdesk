@@ -31,10 +31,23 @@ export async function addMember(workspaceId: string, role: Role): Promise<Worksp
   return (await loadCtx(user, { id: workspaceId }))!;
 }
 
-export async function makeChannel(workspaceId: string, platform: 'INSTAGRAM' | 'FACEBOOK' = 'FACEBOOK') {
+/** A project with a free slot for `platform` (created directly, outside plan limits, if needed). */
+export async function projectWithSlot(workspaceId: string, platform: 'INSTAGRAM' | 'FACEBOOK') {
+  const projects = await db.project.findMany({
+    where: { workspaceId },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    include: { socialAccounts: { where: { platform, status: { not: 'DISCONNECTED' } }, select: { id: true } } },
+  });
+  const free = projects.find((p) => p.socialAccounts.length === 0);
+  return free ?? db.project.create({ data: { workspaceId, name: `Project ${uid()}` } });
+}
+
+/** A mock channel in the first project with a free slot for its platform. */
+export async function makeChannel(workspaceId: string, platform: 'INSTAGRAM' | 'FACEBOOK' = 'FACEBOOK', projectId?: string) {
   return db.socialAccount.create({
     data: {
       workspaceId,
+      projectId: projectId ?? (await projectWithSlot(workspaceId, platform)).id,
       platform,
       externalId: `ext-${uid()}`,
       name: `${platform === 'INSTAGRAM' ? 'IG' : 'FB'} channel`,

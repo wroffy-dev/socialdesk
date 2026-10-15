@@ -47,6 +47,9 @@ async function main() {
       },
     });
   }
+  const project =
+    (await db.project.findFirst({ where: { workspaceId: ws.id }, orderBy: { createdAt: 'asc' } })) ??
+    (await db.project.create({ data: { workspaceId: ws.id, name: 'Digi Emporia' } }));
   const channels = [
     { platform: 'INSTAGRAM' as const, externalId: 'mock-ig-1', name: 'Digi Emporia', username: 'digi_emporia' },
     { platform: 'FACEBOOK' as const, externalId: 'mock-fb-1', name: 'Digi Emporia', username: null },
@@ -54,7 +57,7 @@ async function main() {
   for (const c of channels) {
     await db.socialAccount.upsert({
       where: { workspaceId_platform_externalId: { workspaceId: ws.id, platform: c.platform, externalId: c.externalId } },
-      create: { ...c, workspaceId: ws.id, accessTokenEnc: encrypt('mock-token'), mode: 'MOCK', scopes: [], connectedById: user.id },
+      create: { ...c, workspaceId: ws.id, projectId: project.id, accessTokenEnc: encrypt('mock-token'), mode: 'MOCK', scopes: [], connectedById: user.id },
       update: {},
     });
   }

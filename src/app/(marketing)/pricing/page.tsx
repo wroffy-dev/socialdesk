@@ -14,7 +14,7 @@ export default async function PricingPage() {
     <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
       <h1 className="text-center text-4xl font-semibold tracking-tight">Simple pricing</h1>
       <p className="mx-auto mt-4 max-w-xl text-center text-lg text-muted">
-        {billing ? 'Start free and upgrade when you need more channels or teammates.' : 'Everything is free during the beta. Paid plans will launch later with these limits.'}
+        {billing ? 'Start free and upgrade when you need more projects or teammates. Each project links one Instagram account and one Facebook Page.' : 'Everything is free during the beta. Paid plans will launch later with these limits.'}
       </p>
       <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {plans.map((p, i) => (

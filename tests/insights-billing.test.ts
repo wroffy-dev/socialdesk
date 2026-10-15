@@ -69,7 +69,8 @@ describe('billing', () => {
     const billing = await getBilling(ctx);
     expect(billing.billingEnabled).toBe(false);
     expect(billing.plan.key).toBe('free');
-    expect(billing.usage.find((u) => u.key === 'social_accounts')).toMatchObject({ used: 0, limit: 3 });
+    // Every workspace starts with one project; Free allows two.
+    expect(billing.usage.find((u) => u.key === 'projects')).toMatchObject({ used: 1, limit: 2 });
   });
 
   it('verifies webhook signatures', () => {
@@ -126,31 +127,31 @@ describe('super admin operations', () => {
 
   it('plan limits edited by an admin apply immediately', async () => {
     const { ws, ctx } = await makeWorkspace('Limit Co');
-    const starter = await db.plan.findUniqueOrThrow({ where: { key: 'starter' }, include: { entitlements: true } });
-    await setWorkspacePlan({ id: ctx.user.id }, ws.id, 'starter');
-    await updatePlan({ id: ctx.user.id }, starter.id, {
-      name: starter.name,
-      description: starter.description,
-      priceAmount: starter.priceAmount,
+    const paid = await db.plan.findUniqueOrThrow({ where: { key: 'pro' }, include: { entitlements: true } });
+    await setWorkspacePlan({ id: ctx.user.id }, ws.id, 'pro');
+    await updatePlan({ id: ctx.user.id }, paid.id, {
+      name: paid.name,
+      description: paid.description,
+      priceAmount: paid.priceAmount,
       currency: 'INR',
       razorpayPlanId: null,
       isActive: true,
       isPublic: true,
-      sortOrder: starter.sortOrder,
-      entitlements: starter.entitlements.map((e) => (e.key === 'social_accounts' ? { key: e.key, enabled: true, limit: 42 } : { key: e.key, enabled: e.enabled, limit: e.limit })),
+      sortOrder: paid.sortOrder,
+      entitlements: paid.entitlements.map((e) => (e.key === 'projects' ? { key: e.key, enabled: true, limit: 42 } : { key: e.key, enabled: e.enabled, limit: e.limit })),
     });
     const plan = await getWorkspacePlan(ws.id);
-    expect(plan.entitlements.get('social_accounts')?.limit).toBe(42);
-    await updatePlan({ id: ctx.user.id }, starter.id, {
-      name: starter.name,
-      description: starter.description,
-      priceAmount: starter.priceAmount,
+    expect(plan.entitlements.get('projects')?.limit).toBe(42);
+    await updatePlan({ id: ctx.user.id }, paid.id, {
+      name: paid.name,
+      description: paid.description,
+      priceAmount: paid.priceAmount,
       currency: 'INR',
       razorpayPlanId: null,
       isActive: true,
       isPublic: true,
-      sortOrder: starter.sortOrder,
-      entitlements: starter.entitlements.map((e) => ({ key: e.key, enabled: e.enabled, limit: e.limit })),
+      sortOrder: paid.sortOrder,
+      entitlements: paid.entitlements.map((e) => ({ key: e.key, enabled: e.enabled, limit: e.limit })),
     });
   });
 });

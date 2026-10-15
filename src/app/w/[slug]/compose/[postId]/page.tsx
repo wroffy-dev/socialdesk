@@ -16,5 +16,5 @@ export default async function EditPostPage({ params }: { params: Promise<{ slug:
     if (err instanceof AppError && err.status === 404) notFound();
     throw err;
   });
-  return <Composer {...data} preselectChannels={[]} presetDate={null} defaultMode={null} />;
+  return <Composer {...data} preselectChannels={[]} presetProject={null} presetDate={null} defaultMode={null} />;
 }

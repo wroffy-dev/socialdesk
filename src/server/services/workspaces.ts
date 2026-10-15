@@ -70,6 +70,8 @@ export async function createWorkspace(userId: string, input: z.infer<typeof work
         queueSettings: { create: {} },
         queueSlots: { createMany: { data: DEFAULT_SLOTS } },
         notificationPrefs: { create: { userId } },
+        // Every workspace starts with one project named after it.
+        projects: { create: { name: data.name } },
       },
     });
     await audit({ action: 'workspace.created', actorId: userId, workspaceId: ws.id, targetType: 'workspace', targetId: ws.id }, tx);

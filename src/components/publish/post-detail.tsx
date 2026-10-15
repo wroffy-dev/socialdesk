@@ -65,6 +65,9 @@ export function PostDetail({
         </Button>
         <h1 className="page-title">Post details</h1>
         <StatusBadge status={post.status} />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+          <span className="size-2 rounded-full" style={{ background: post.project.color }} /> {post.project.name}
+        </span>
         <div className="ml-auto flex items-center gap-2">
           {canEdit && editable && (
             <Button asChild variant="outline">

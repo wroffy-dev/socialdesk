@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createWorkspace, signUp, verifyEmail } from './helpers';
 
-test('sign up, verify, connect a channel and schedule a post', async ({ page }) => {
+test('sign up, verify, connect a channel to a project and schedule a post', async ({ page }) => {
   const email = await signUp(page, { name: 'Asha Rao' });
   const slug = await createWorkspace(page, `Asha Studio ${Date.now() % 10000}`);
   await expect(page.getByRole('heading', { name: /Asha!/ })).toBeVisible();
@@ -10,15 +10,28 @@ test('sign up, verify, connect a channel and schedule a post', async ({ page }) 
 
   await verifyEmail(page, email);
 
-  // Connect a mock Facebook Page through the full OAuth round trip.
+  // The workspace starts with one project; connect a mock Facebook Page to it through the full OAuth round trip.
   await page.goto(`/w/${slug}/channels`);
-  await page.getByRole('button', { name: 'Connect channel' }).click();
-  await page.locator('a[href*="platform=FACEBOOK"]').click();
+  await expect(page.getByText(/1 of 2 projects used/)).toBeVisible();
+  await page.getByTestId('project-card').first().locator('a[href*="platform=FACEBOOK"]').click();
   await page.waitForURL(/channels\/connect\?pending=/);
-  await page.getByLabel('Connect Mock Facebook Page 1').click();
-  await page.getByRole('button', { name: /Connect 1 account/ }).click();
+  await page.getByLabel('Connect Mock Facebook Page 1').check();
+  await page.getByRole('button', { name: /^Link to / }).click();
   await page.waitForURL(/channels\?connected=/);
   await expect(page.getByText('Mock Facebook Page 1').first()).toBeVisible();
+
+  // A second project; the Free plan stops at two.
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Second Brand');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page.getByRole('heading', { name: 'Second Brand' })).toBeVisible();
+  await expect(page.getByText(/2 of 2 projects used/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New project' })).toBeDisabled();
+  // The same Page can't be linked to the second project too.
+  await page.getByTestId('project-card').nth(1).locator('a[href*="platform=FACEBOOK"]').click();
+  await page.waitForURL(/channels\/connect\?pending=/);
+  await expect(page.getByLabel('Connect Mock Facebook Page 1')).toBeDisabled();
+  await expect(page.getByText(/Already linked to the project/)).toBeVisible();
 
   // Compose and schedule.
   await page.goto(`/w/${slug}/compose`);
@@ -41,11 +54,10 @@ test('composer blocks invalid Instagram posts', async ({ page }) => {
   const slug = await createWorkspace(page, `IG Check ${Date.now() % 10000}`);
   await verifyEmail(page, email);
   await page.goto(`/w/${slug}/channels`);
-  await page.getByRole('button', { name: 'Connect channel' }).click();
-  await page.locator('a[href*="platform=INSTAGRAM"]').click();
+  await page.getByTestId('project-card').first().locator('a[href*="platform=INSTAGRAM"]').click();
   await page.waitForURL(/channels\/connect\?pending=/);
-  await page.getByLabel('Connect Mock Instagram 1').click();
-  await page.getByRole('button', { name: /Connect 1 account/ }).click();
+  await page.getByLabel('Connect Mock Instagram 1').check();
+  await page.getByRole('button', { name: /^Link to / }).click();
   await page.waitForURL(/channels\?connected=/);
 
   await page.goto(`/w/${slug}/compose`);

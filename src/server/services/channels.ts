@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { Prisma, SocialAccount } from '@prisma/client';
+import type { Prisma, SocialAccount, SocialPlatform } from '@prisma/client';
 import { db } from '../db';
 import { env } from '../env';
-import { badRequest, forbidden, notFound } from '../errors';
+import { badRequest, conflict, forbidden, notFound } from '../errors';
 import { audit } from '../audit';
 import { decrypt, decryptJson, encrypt, encryptJson, hashToken, randomToken, safeEqual } from '../crypto';
 import { assertCan, loadCtx, type WorkspaceCtx } from '../auth/ctx';
@@ -11,7 +11,8 @@ import type { AccountRef } from '../adapters/types';
 import { discoverMetaAccounts, metaAuthUrl, mockDiscovery, type DiscoveredAccount } from '../integrations/meta-oauth';
 import { removePublishJobs } from '../queue/producer';
 import { refreshPostStatus } from '../publishing/status';
-import { assertWithinLimit, getWorkspacePlan, limitOf } from './entitlements';
+import { PLATFORMS, PLATFORM_INFO } from '@/lib/platforms';
+import { findProject, lockProject } from './projects';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const PENDING_TTL_MS = 30 * 60 * 1000;
@@ -35,17 +36,32 @@ export function toAccountRef(a: Pick<SocialAccount, 'id' | 'externalId' | 'acces
 // OAuth start / callback
 // ---------------------------------------------------------------------------
 
+export const connectQuerySchema = z.object({
+  project: z.string().min(1).max(40),
+  platform: z.enum(PLATFORMS),
+});
+
 /**
- * Starts a Meta connection. The random state is stored hashed and bound to this user and
- * workspace; the raw value is also set in an httpOnly cookie so the callback must happen in
- * the same browser.
+ * Starts a Meta connection for one project slot (its Instagram or its Facebook Page). The
+ * random state is stored hashed and bound to this user, workspace, project and platform; the raw
+ * value is also set in an httpOnly cookie so the callback must happen in the same browser.
  */
-export async function startMetaConnect(ctx: WorkspaceCtx) {
+export async function startMetaConnect(ctx: WorkspaceCtx, projectId: string, platform: SocialPlatform) {
   assertCan(ctx, 'channels.manage');
   if (!ctx.user.emailVerified) throw forbidden('Verify your email address before connecting channels.');
+  if (!(PLATFORMS as readonly string[]).includes(platform)) throw badRequest('This platform is not supported yet.');
+  await findProject(ctx, projectId);
   const state = randomToken(24);
   await db.oAuthState.create({
-    data: { stateHash: hashToken(state), workspaceId: ctx.workspace.id, userId: ctx.user.id, provider: 'meta', expiresAt: new Date(Date.now() + STATE_TTL_MS) },
+    data: {
+      stateHash: hashToken(state),
+      workspaceId: ctx.workspace.id,
+      projectId,
+      platform,
+      userId: ctx.user.id,
+      provider: 'meta',
+      expiresAt: new Date(Date.now() + STATE_TTL_MS),
+    },
   });
   const redirectUrl = integrationMode() === 'MOCK' ? `${env().APP_URL}/api/oauth/meta/callback?code=mock&state=${state}` : metaAuthUrl(state);
   return { state, redirectUrl };
@@ -95,6 +111,8 @@ export async function handleMetaCallback(
   const pending = await db.pendingConnection.create({
     data: {
       workspaceId: row.workspaceId,
+      projectId: row.projectId,
+      platform: row.platform,
       userId: user.id,
       provider: 'meta',
       payloadEnc: encryptJson(discovered),
@@ -106,35 +124,52 @@ export async function handleMetaCallback(
 }
 
 async function loadPending(ctx: WorkspaceCtx, pendingId: string) {
-  const p = await db.pendingConnection.findFirst({ where: { id: pendingId, workspaceId: ctx.workspace.id, userId: ctx.user.id } });
+  const p = await db.pendingConnection.findFirst({
+    where: { id: pendingId, workspaceId: ctx.workspace.id, userId: ctx.user.id },
+    include: { project: { select: { id: true, name: true } } },
+  });
   if (!p || p.expiresAt < new Date()) throw notFound('Connection request');
-  return { row: p, data: decryptJson<ReturnType<typeof mockDiscovery>>(p.payloadEnc) };
+  const data = decryptJson<ReturnType<typeof mockDiscovery>>(p.payloadEnc);
+  // Only accounts of the platform this project slot is for.
+  return { row: p, data: { ...data, accounts: data.accounts.filter((a) => a.platform === p.platform) } };
 }
 
-/** The accounts found during OAuth, without their tokens. */
+/** The accounts found during OAuth for one project slot, without their tokens. */
 export async function getPendingConnection(ctx: WorkspaceCtx, pendingId: string) {
   assertCan(ctx, 'channels.manage');
-  const { data } = await loadPending(ctx, pendingId);
-  const existing = await db.socialAccount.findMany({ where: { workspaceId: ctx.workspace.id }, select: { platform: true, externalId: true, status: true } });
-  const plan = await getWorkspacePlan(ctx.workspace.id);
-  const active = existing.filter((e) => e.status !== 'DISCONNECTED').length;
+  const { row, data } = await loadPending(ctx, pendingId);
+  const existing = await db.socialAccount.findMany({
+    where: { workspaceId: ctx.workspace.id, platform: row.platform },
+    select: { externalId: true, status: true, projectId: true, name: true, username: true, project: { select: { name: true } } },
+  });
+  const current = existing.find((e) => e.projectId === row.projectId && e.status !== 'DISCONNECTED') ?? null;
   return {
     fbUserName: data.fbUserName,
     declined: data.declined,
     mode: integrationMode(),
-    limit: limitOf(plan, 'social_accounts'),
-    used: active,
-    planName: plan.planName,
+    project: row.project,
+    platform: row.platform,
+    platformLabel: PLATFORM_INFO[row.platform].label,
+    current: current ? { externalId: current.externalId, name: current.username ? `@${current.username}` : current.name } : null,
     accounts: data.accounts.map((a) => {
-      const prev = existing.find((e) => e.platform === a.platform && e.externalId === a.externalId);
+      const prev = existing.find((e) => e.externalId === a.externalId);
+      const active = !!prev && prev.status !== 'DISCONNECTED';
+      const otherProject = active && prev.projectId !== row.projectId ? prev.project.name : null;
+      const replacesOther = !!current && current.externalId !== a.externalId;
       return {
         key: a.key,
         platform: a.platform,
         name: a.name,
         username: a.username,
         avatarUrl: a.avatarUrl,
-        blockedReason: a.blockedReason,
-        connected: !!prev && prev.status !== 'DISCONNECTED',
+        blockedReason:
+          a.blockedReason ??
+          (otherProject
+            ? `Already linked to the project “${otherProject}”. Disconnect it there first.`
+            : replacesOther
+              ? `This project already has ${current.name}. Disconnect it first to link a different account.`
+              : null),
+        connected: active && !otherProject,
         reconnect: !!prev,
         missingPermissions: adapterFor({ platform: a.platform, mode: integrationMode() }).capabilities({ scopes: a.scopes }).missing,
       };
@@ -142,55 +177,96 @@ export async function getPendingConnection(ctx: WorkspaceCtx, pendingId: string)
   };
 }
 
-export const confirmSchema = z.object({ keys: z.array(z.string().max(200)).min(1, 'Select at least one account').max(50) });
+export const confirmSchema = z.object({ key: z.string().min(1, 'Select an account').max(200) });
 
-export async function confirmPendingConnection(ctx: WorkspaceCtx, pendingId: string, keys: string[]) {
+/**
+ * Links the chosen account to the project. A project holds at most one account per platform,
+ * and an account can be active in only one project of the workspace.
+ */
+export async function confirmPendingConnection(ctx: WorkspaceCtx, pendingId: string, key: string) {
   assertCan(ctx, 'channels.manage');
   const { row, data } = await loadPending(ctx, pendingId);
-  const chosen = data.accounts.filter((a) => keys.includes(a.key) && !a.blockedReason);
-  if (chosen.length === 0) throw badRequest('Select at least one account that can be connected.');
-
-  const plan = await getWorkspacePlan(ctx.workspace.id);
-  const existing = await db.socialAccount.findMany({ where: { workspaceId: ctx.workspace.id } });
-  const active = existing.filter((e) => e.status !== 'DISCONNECTED').length;
-  const newOnes = chosen.filter((a) => !existing.some((e) => e.platform === a.platform && e.externalId === a.externalId && e.status !== 'DISCONNECTED'));
-  assertWithinLimit(plan, 'social_accounts', active, newOnes.length);
+  const a = data.accounts.find((x) => x.key === key);
+  if (!a) throw badRequest('Select an account to connect.');
+  if (a.blockedReason) throw badRequest(a.blockedReason);
+  const label = PLATFORM_INFO[row.platform].label;
 
   const mode = integrationMode();
   const saved = await db.$transaction(async (tx) => {
-    const out: string[] = [];
-    for (const a of chosen) {
-      const data = {
-        name: a.name,
-        username: a.username,
-        avatarUrl: a.avatarUrl,
-        accessTokenEnc: encrypt(a.accessToken),
-        tokenExpiresAt: a.tokenExpiresAt ? new Date(a.tokenExpiresAt) : null,
-        scopes: a.scopes,
-        status: 'CONNECTED' as const,
-        mode,
-        lastError: null,
-        lastCheckedAt: new Date(),
-        metadata: a.metadata as Prisma.InputJsonValue,
-        connectedById: ctx.user.id,
-      };
-      const acc = await tx.socialAccount.upsert({
-        where: { workspaceId_platform_externalId: { workspaceId: ctx.workspace.id, platform: a.platform, externalId: a.externalId } },
-        create: { ...data, workspaceId: ctx.workspace.id, platform: a.platform, externalId: a.externalId },
-        update: data,
-      });
-      out.push(acc.id);
+    await lockProject(tx, ctx.workspace.id, row.projectId);
+    const current = await tx.socialAccount.findFirst({ where: { projectId: row.projectId, platform: row.platform, status: { not: 'DISCONNECTED' } } });
+    if (current && current.externalId !== a.externalId) {
+      throw conflict(`This project already has a ${label} account (${current.username ? `@${current.username}` : current.name}). Disconnect it first.`);
     }
+    const prev = await tx.socialAccount.findUnique({
+      where: { workspaceId_platform_externalId: { workspaceId: ctx.workspace.id, platform: a.platform, externalId: a.externalId } },
+      include: { project: { select: { name: true } } },
+    });
+    if (prev && prev.status !== 'DISCONNECTED' && prev.projectId !== row.projectId) {
+      throw conflict(`This account is already linked to the project “${prev.project.name}”. Disconnect it there first.`);
+    }
+    const fields = {
+      projectId: row.projectId,
+      name: a.name,
+      username: a.username,
+      avatarUrl: a.avatarUrl,
+      accessTokenEnc: encrypt(a.accessToken),
+      tokenExpiresAt: a.tokenExpiresAt ? new Date(a.tokenExpiresAt) : null,
+      scopes: a.scopes,
+      status: 'CONNECTED' as const,
+      mode,
+      lastError: null,
+      lastCheckedAt: new Date(),
+      metadata: a.metadata as Prisma.InputJsonValue,
+      connectedById: ctx.user.id,
+    };
+    const acc = await tx.socialAccount.upsert({
+      where: { workspaceId_platform_externalId: { workspaceId: ctx.workspace.id, platform: a.platform, externalId: a.externalId } },
+      create: { ...fields, workspaceId: ctx.workspace.id, platform: a.platform, externalId: a.externalId },
+      update: fields,
+    });
     await tx.pendingConnection.delete({ where: { id: row.id } });
-    return out;
+    return acc;
   });
-  await audit({ action: 'channel.connected', actorId: ctx.user.id, workspaceId: ctx.workspace.id, metadata: { accounts: chosen.map((c) => c.key), mode } });
-  return { connected: saved.length };
+  await audit({
+    action: 'channel.connected',
+    actorId: ctx.user.id,
+    workspaceId: ctx.workspace.id,
+    targetType: 'social_account',
+    targetId: saved.id,
+    metadata: { account: a.key, projectId: row.projectId, mode },
+  });
+  return { connected: 1, channelId: saved.id, projectId: row.projectId };
 }
 
 // ---------------------------------------------------------------------------
 // Management
 // ---------------------------------------------------------------------------
+
+type ChannelRow = SocialAccount & { connectedBy: { name: string | null; email: string } | null; _count: { platformPosts: number } };
+
+export function channelDto(r: ChannelRow) {
+  return {
+    id: r.id,
+    projectId: r.projectId,
+    platform: r.platform,
+    name: r.name,
+    username: r.username,
+    avatarUrl: r.avatarUrl,
+    status: r.status,
+    mode: r.mode,
+    lastError: r.lastError,
+    lastCheckedAt: r.lastCheckedAt?.toISOString() ?? null,
+    tokenExpiresAt: r.tokenExpiresAt?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+    connectedBy: r.connectedBy?.name ?? r.connectedBy?.email ?? null,
+    scheduledCount: r._count.platformPosts,
+    capabilities: adapterFor(r).capabilities({ scopes: r.scopes }),
+    pageName: (r.metadata as { pageName?: string } | null)?.pageName ?? null,
+  };
+}
+
+export type ChannelDto = ReturnType<typeof channelDto>;
 
 export async function listChannels(ctx: WorkspaceCtx) {
   assertCan(ctx, 'channels.view');
@@ -199,32 +275,7 @@ export async function listChannels(ctx: WorkspaceCtx) {
     orderBy: { createdAt: 'asc' },
     include: { connectedBy: { select: { name: true, email: true } }, _count: { select: { platformPosts: { where: { status: 'SCHEDULED' } } } } },
   });
-  const plan = await getWorkspacePlan(ctx.workspace.id);
-  return {
-    mode: integrationMode(),
-    limit: limitOf(plan, 'social_accounts'),
-    planName: plan.planName,
-    channels: rows.map((r) => {
-      const caps = adapterFor(r).capabilities({ scopes: r.scopes });
-      return {
-        id: r.id,
-        platform: r.platform,
-        name: r.name,
-        username: r.username,
-        avatarUrl: r.avatarUrl,
-        status: r.status,
-        mode: r.mode,
-        lastError: r.lastError,
-        lastCheckedAt: r.lastCheckedAt?.toISOString() ?? null,
-        tokenExpiresAt: r.tokenExpiresAt?.toISOString() ?? null,
-        createdAt: r.createdAt.toISOString(),
-        connectedBy: r.connectedBy?.name ?? r.connectedBy?.email ?? null,
-        scheduledCount: r._count.platformPosts,
-        capabilities: caps,
-        pageName: (r.metadata as { pageName?: string } | null)?.pageName ?? null,
-      };
-    }),
-  };
+  return { mode: integrationMode(), channels: rows.map(channelDto) };
 }
 
 /**

@@ -3,8 +3,15 @@ import type { PostDto } from '@/server/services/posts';
 
 export type { MediaDto, PostDto };
 
+export interface ComposerProject {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface ComposerChannel {
   id: string;
+  projectId: string;
   name: string;
   username: string | null;
   avatarUrl: string | null;
@@ -25,6 +32,7 @@ export interface Override {
 }
 
 export interface ComposerState {
+  projectId: string;
   selected: string[];
   baseCaption: string;
   baseMedia: MediaDto[];

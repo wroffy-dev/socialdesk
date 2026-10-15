@@ -11,7 +11,7 @@ export default async function NewPostPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ channel?: string; date?: string; mode?: string }>;
+  searchParams: Promise<{ channel?: string; project?: string; date?: string; mode?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -22,6 +22,7 @@ export default async function NewPostPage({
     <Composer
       {...data}
       preselectChannels={sp.channel ? sp.channel.split(',') : []}
+      presetProject={sp.project ?? null}
       presetDate={sp.date && !Number.isNaN(Date.parse(sp.date)) ? new Date(sp.date).toISOString() : null}
       defaultMode={sp.mode === 'queue' ? 'queue' : null}
     />

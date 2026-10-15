@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, EmptyState, Skeleton } from '@/components/ui/feedback';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { Tooltip } from '@/components/ui/tooltip';
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChannelAvatar, PlatformIcon } from '@/components/platform-icon';
 import { api, errorMessage } from '@/lib/api-client';
 import { formatAgo } from '@/lib/time';
@@ -35,10 +35,12 @@ const shortDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('
 
 export function InsightsView({
   workspace,
+  projects,
   channels,
 }: {
   workspace: { id: string; slug: string };
-  channels: { id: string; name: string; username: string | null; platform: 'INSTAGRAM' | 'FACEBOOK'; avatarUrl: string | null }[];
+  projects: { id: string; name: string; color: string }[];
+  channels: { id: string; projectId: string; name: string; username: string | null; platform: 'INSTAGRAM' | 'FACEBOOK'; avatarUrl: string | null }[];
 }) {
   const [range, setRange] = useState<RangeKey>('30d');
   const [from, setFrom] = useState('');
@@ -73,7 +75,7 @@ export function InsightsView({
   if (channels.length === 0) {
     return (
       <div className="px-5 pb-10 sm:px-8">
-        <EmptyState icon={<Layers />} title="No channels yet" description="Connect a channel to start collecting insights." action={<Button asChild variant="primary"><Link href={`/w/${workspace.slug}/channels`}>Go to channels</Link></Button>} />
+        <EmptyState icon={<Layers />} title="No channels yet" description="Connect a channel to one of your projects to start collecting insights." action={<Button asChild variant="primary"><Link href={`/w/${workspace.slug}/channels`}>Go to projects</Link></Button>} />
       </div>
     );
   }
@@ -107,7 +109,23 @@ export function InsightsView({
               <Layers /> {selected.length ? `${selected.length} channel${selected.length > 1 ? 's' : ''}` : 'All channels'} <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-60">
+          <DropdownMenuContent className="w-64">
+            {projects.length > 1 && (
+              <>
+                <DropdownMenuLabel>Projects</DropdownMenuLabel>
+                {projects.map((p) => {
+                  const ids = channels.filter((c) => c.projectId === p.id).map((c) => c.id);
+                  return (
+                    <DropdownMenuItem key={p.id} disabled={ids.length === 0} onSelect={() => setSelected(ids)}>
+                      <span className="size-2.5 rounded-full" style={{ background: p.color }} /> {p.name}
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuItem onSelect={() => setSelected([])}>All projects</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Channels</DropdownMenuLabel>
+              </>
+            )}
             {channels.map((c) => (
               <DropdownMenuCheckboxItem
                 key={c.id}

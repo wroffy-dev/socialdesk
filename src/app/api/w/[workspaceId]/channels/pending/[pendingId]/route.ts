@@ -11,6 +11,6 @@ export const GET = route<P>(async (_req, { params }) => {
 
 export const POST = route<P>(async (req, { params }) => {
   const ctx = await requireWorkspace(params.workspaceId, 'channels.manage');
-  const { keys } = await parseJson(req, confirmSchema);
-  return confirmPendingConnection(ctx, params.pendingId, keys);
+  const { key } = await parseJson(req, confirmSchema);
+  return confirmPendingConnection(ctx, params.pendingId, key);
 });

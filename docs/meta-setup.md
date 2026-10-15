@@ -49,7 +49,7 @@ Channels record the mode they were connected under and show it as a badge (Mock 
 ## 5. Testing before review
 
 1. Set `META_MODE=development`, deploy, add yourself as an app Admin.
-2. Connect your Page / Instagram account from *Channels → Connect channel*.
+2. Connect your Page / Instagram account from *Projects & channels* → a project's **Connect** button (each project takes one Instagram account and one Facebook Page).
 3. Publish a test post with *Publish now* and confirm it appears on the platform and in the post details (with the live link).
 4. Check *Insights* after the next analytics sync (every 6 hours) and *Community* (comments sync every 30 minutes, or **Sync now**).
 
@@ -58,7 +58,7 @@ Channels record the mode they were connected under and show it as a badge (Mock 
 For each permission Meta asks for a description and a screencast. Prepare:
 
 - A test user (Meta provides test credentials or use an App role) and a test Page/Instagram account.
-- Screencasts showing: sign-in to SocialDesk → Connect channel → Facebook Login → selecting the Page/Instagram account → composing a post → publishing → the published post on Facebook/Instagram; reading and replying to a comment in Community; Insights page.
+- Screencasts showing: sign-in to SocialDesk → Projects & channels → Connect → Facebook Login → selecting the Page/Instagram account → composing a post → publishing → the published post on Facebook/Instagram; reading and replying to a comment in Community; Insights page.
 - Business verification of your company (required for advanced access).
 - Privacy policy covering what is stored (encrypted tokens, content you create) and deletion (data deletion callback + `/legal/data-deletion`).
 
