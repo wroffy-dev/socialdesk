@@ -211,7 +211,7 @@ export async function validatePostVersions(postId: string, tx: Tx = db): Promise
     if (v.socialAccount.status !== 'CONNECTED') {
       issues.push({ severity: 'error', message: `${v.socialAccount.name} needs to be reconnected before publishing.` });
     } else {
-      const caps = adapterFor(v.socialAccount).capabilities({ scopes: v.socialAccount.scopes });
+      const caps = adapterFor(v.socialAccount).capabilities(v.socialAccount);
       if (!caps.publish) {
         issues.push({ severity: 'error', message: `${v.socialAccount.name} is missing permission to publish. Reconnect it and allow all requested permissions.` });
       } else if (!caps.formats.includes(inferFormat(v.platform, { caption, linkUrl, media: media.map(toFacts) }, options))) {

@@ -1,7 +1,8 @@
 import type { PostFormat } from '@/lib/platforms';
 import type { VersionOptions } from '@/lib/post-options';
 
-export type Platform = 'INSTAGRAM' | 'FACEBOOK';
+export type { Platform } from '@/lib/platforms';
+import type { Platform } from '@/lib/platforms';
 
 /**
  * How a failure should be handled:
@@ -43,9 +44,15 @@ export interface PublishMedia {
   id: string;
   kind: 'IMAGE' | 'VIDEO';
   mimeType: string;
-  /** Short-lived public URL the platform downloads from. */
+  /** Short-lived public URL the platform downloads from (Meta fetches media itself). */
   url: string;
   durationSec: number | null;
+  width?: number | null;
+  height?: number | null;
+  /** Size of the bytes `read` returns (after any format conversion). */
+  sizeBytes: number;
+  /** Reads bytes [start, end) of the file, for platforms that need it uploaded (X, LinkedIn, YouTube). */
+  read(start: number, end: number): Promise<Buffer>;
 }
 
 export interface PublishInput {
@@ -121,7 +128,8 @@ export interface Capabilities {
 /** One implementation per platform. Unsupported operations throw UnsupportedCapabilityError. */
 export interface SocialAdapter {
   readonly platform: Platform;
-  capabilities(account: Pick<AccountRef, 'scopes'>): Capabilities;
+  /** `metadata` lets an adapter tell account kinds apart (e.g. LinkedIn profile vs page). */
+  capabilities(account: { scopes: string[]; metadata?: unknown }): Capabilities;
   publish(input: PublishInput, hooks: PublishHooks): Promise<PublishResult>;
   /** Determines whether an ambiguous publish actually went live. */
   verifyPublish(input: PublishInput, since: Date): Promise<VerifyOutcome>;

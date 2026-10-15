@@ -1,11 +1,15 @@
 import { cn } from '@/lib/utils';
+import type { Platform } from '@/lib/platforms';
 import { Avatar } from './ui/avatar';
 
-type Key = 'INSTAGRAM' | 'FACEBOOK' | 'threads' | 'linkedin' | 'bluesky' | 'pinterest';
+type Key = Platform | 'threads' | 'linkedin' | 'bluesky' | 'pinterest';
 
 const BG: Record<Key, string> = {
   INSTAGRAM: 'linear-gradient(45deg,#f9a825 0%,#e1306c 50%,#833ab4 100%)',
   FACEBOOK: '#1877f2',
+  X: '#000000',
+  LINKEDIN: '#0a66c2',
+  YOUTUBE: '#ff0000',
   threads: '#111111',
   linkedin: '#0a66c2',
   bluesky: '#1185fe',
@@ -27,6 +31,11 @@ function Glyph({ platform }: { platform: Key }) {
       return <path d="M13.5 21v-7.5h2.5l.4-3h-2.9V8.6c0-.9.3-1.5 1.5-1.5h1.5V4.4c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.4H8v3h2.6V21" fill="white" />;
     case 'threads':
       return <path d="M16.5 11.2c-.3-2.2-1.8-3.4-4.2-3.4-2.6 0-4.3 1.9-4.3 4.4 0 2.6 1.7 4.3 4.4 4.3 2 0 3.4-1 3.4-2.6 0-1.4-1.1-2.3-3-2.3-1.6 0-2.4.7-2.4 1.6 0 .8.7 1.3 1.6 1.3 1.6 0 2.6-1.3 2.6-3.6" {...common} strokeWidth={1.8} />;
+    case 'X':
+      return <path d="M5 5l14 14M19 5L5 19" stroke="white" strokeWidth={2.2} strokeLinecap="round" fill="none" />;
+    case 'YOUTUBE':
+      return <path d="M10 8.5v7l6-3.5-6-3.5Z" fill="white" />;
+    case 'LINKEDIN':
     case 'linkedin':
       return (
         <>
@@ -65,7 +74,7 @@ export function ChannelAvatar({
 }: {
   name: string;
   avatarUrl?: string | null;
-  platform: 'INSTAGRAM' | 'FACEBOOK';
+  platform: Platform;
   size?: number;
   className?: string;
 }) {

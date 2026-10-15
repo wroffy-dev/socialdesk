@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChannelAvatar, PlatformIcon } from '@/components/platform-icon';
-import { COMING_SOON } from '@/lib/platforms';
+import { COMING_SOON, PLATFORMS } from '@/lib/platforms';
 import { ROLE_LABEL } from '@/lib/permissions';
 import { Logo } from '@/components/brand';
 import { useCan, useShell } from './shell-context';
@@ -164,11 +164,9 @@ export function Sidebar({
         )}
         {data.projects.map((p) => {
           const href = `${base}/publish?project=${p.id}`;
-          const slots = [
-            { platform: 'INSTAGRAM' as const, channel: p.instagram },
-            { platform: 'FACEBOOK' as const, channel: p.facebook },
-          ];
-          const needsAttention = slots.some((s) => s.channel && s.channel.status !== 'CONNECTED');
+          const linked = PLATFORMS.map((pl) => p.slots[pl]).filter((c): c is NonNullable<typeof c> => !!c);
+          const hasFreeSlot = PLATFORMS.some((pl) => !p.slots[pl] && data.availablePlatforms[pl]);
+          const needsAttention = linked.some((c) => c.status !== 'CONNECTED');
           return (
             <Tooltip key={p.id} content={p.name} side="right" disabled={!collapsed}>
               <div className={cn('group flex h-10 items-center gap-2 rounded-lg px-2 hover:bg-hover', collapsed && 'w-10 justify-center px-0')}>
@@ -180,29 +178,24 @@ export function Sidebar({
                   {!collapsed && <span className="min-w-0 flex-1 truncate text-[14px]">{p.name}</span>}
                 </Link>
                 {!collapsed &&
-                  slots.map((s) =>
-                    s.channel ? (
-                      <Tooltip key={s.platform} content={`${s.channel.username ? `@${s.channel.username}` : s.channel.name} · ${s.channel.scheduled} scheduled`}>
-                        <Link href={`${base}/publish?channel=${s.channel.id}`} onClick={onNavigate} className="shrink-0" aria-label={`${s.channel.name} posts`}>
-                          <ChannelAvatar name={s.channel.name} avatarUrl={s.channel.avatarUrl} platform={s.channel.platform} size={20} />
-                        </Link>
-                      </Tooltip>
-                    ) : can('channels.manage') ? (
-                      <Tooltip key={s.platform} content={`Connect ${s.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook Page'}`}>
-                        <button
-                          onClick={() => connect.open({ projectId: p.id, platform: s.platform })}
-                          className="shrink-0 opacity-35 transition-opacity hover:opacity-100"
-                          aria-label={`Connect ${s.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook'} to ${p.name}`}
-                        >
-                          <PlatformIcon platform={s.platform} size={20} />
-                        </button>
-                      </Tooltip>
-                    ) : (
-                      <span key={s.platform} className="shrink-0 opacity-25">
-                        <PlatformIcon platform={s.platform} size={20} muted />
-                      </span>
-                    ),
-                  )}
+                  linked.map((c) => (
+                    <Tooltip key={c.id} content={`${c.username ? `@${c.username}` : c.name} · ${c.scheduled} scheduled`}>
+                      <Link href={`${base}/publish?channel=${c.id}`} onClick={onNavigate} className="-ml-1 shrink-0 first:ml-0" aria-label={`${c.name} posts`}>
+                        <ChannelAvatar name={c.name} avatarUrl={c.avatarUrl} platform={c.platform} size={20} />
+                      </Link>
+                    </Tooltip>
+                  ))}
+                {!collapsed && can('channels.manage') && hasFreeSlot && (
+                  <Tooltip content="Connect a channel">
+                    <button
+                      onClick={() => connect.open({ projectId: p.id })}
+                      className="flex size-5 shrink-0 items-center justify-center rounded-md border border-dashed border-line-strong text-muted opacity-60 transition-opacity hover:text-fg hover:opacity-100"
+                      aria-label={`Connect a channel to ${p.name}`}
+                    >
+                      <Plus className="size-3" />
+                    </button>
+                  </Tooltip>
+                )}
               </div>
             </Tooltip>
           );

@@ -1,6 +1,6 @@
 # SocialDesk
 
-A multi-tenant social media management SaaS: plan, schedule and publish to **Instagram professional accounts** and **Facebook Pages**, with projects per brand or client (one Instagram account + one Facebook Page each), Instagram Stories, Reels, collaborators, people tags and first comments, a visual calendar, posting queue, team workspaces, insights, a comments inbox, billing and a super-admin panel.
+A multi-tenant social media management SaaS: plan, schedule and publish to **Instagram professional accounts**, **Facebook Pages**, **X**, **LinkedIn** (profiles and pages) and **YouTube** (videos and Shorts), with projects per brand or client (one account per platform each), best-time-to-post recommendations from your own results, Instagram Stories, Reels, collaborators, people tags and first comments, a visual calendar, posting queue, team workspaces, insights, a comments inbox, billing and a super-admin panel.
 
 Built for a single VPS with Coolify: Next.js (web) + a separate worker process, PostgreSQL and Redis.
 
@@ -84,3 +84,6 @@ docs/                   deployment, Meta setup, backups, architecture, status
 - [docs/backup-restore.md](docs/backup-restore.md) — automated backups and restoring them
 - [docs/architecture.md](docs/architecture.md) — tenancy, security model, publishing pipeline
 - [docs/STATUS.md](docs/STATUS.md) — what is done, what still needs credentials or approval, known limitations
+
+
+Platform app setup: [docs/meta-setup.md](docs/meta-setup.md) (Instagram, Facebook) and [docs/channels-setup.md](docs/channels-setup.md) (X, LinkedIn, YouTube).

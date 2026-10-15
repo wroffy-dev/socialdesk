@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Bookmark, Heart, MessageCircle, MoreHorizontal, Send, Share2, ThumbsUp, UserRound } from 'lucide-react';
+import { BarChart2, Bookmark, Heart, MessageCircle, MoreHorizontal, Repeat2, Send, Share2, ThumbsUp, UserRound } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { DEFAULT_OPTIONS, type VersionOptions } from '@/lib/post-options';
+import { DEFAULT_OPTIONS, youtubeTitle, type VersionOptions } from '@/lib/post-options';
+import { isShort, xText } from '@/lib/platforms';
 import type { ComposerChannel, MediaDto } from './types';
 
 function Caption({ text, clamp }: { text: string; clamp?: boolean }) {
@@ -152,6 +153,126 @@ function FacebookPreview({ channel, caption, media, linkUrl, options }: { channe
   );
 }
 
+function XPreview({ channel, caption, media, linkUrl, options }: { channel: ComposerChannel; caption: string; media: MediaDto[]; linkUrl: string | null; options: VersionOptions }) {
+  const text = xText(caption, linkUrl);
+  const shown = media.slice(0, 4);
+  const handle = channel.username ?? channel.name;
+  const Row = ({ body }: { body: string }) => (
+    <div className="flex gap-2.5 px-3 py-3">
+      <Avatar name={channel.name} src={channel.avatarUrl} size={36} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px]">
+          <span className="font-semibold">{channel.name}</span> <span className="text-muted">@{handle} · now</span>
+        </p>
+        {body ? <Caption text={body} /> : <p className="text-xs text-faint">Write something…</p>}
+        {body === text && shown.length > 0 && (
+          <div className={cn('mt-2 grid gap-0.5 overflow-hidden rounded-xl border border-line', shown.length > 1 && 'grid-cols-2')}>
+            {shown.map((m) => (
+              <div key={m.id} className={cn('bg-subtle', shown.length === 1 ? 'aspect-video' : 'aspect-square')}>
+                <MediaView m={m} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex justify-between pr-6 text-muted">
+          <MessageCircle className="size-4" /> <Repeat2 className="size-4" /> <Heart className="size-4" /> <BarChart2 className="size-4" />
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="mx-auto w-full max-w-[380px] divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+      <Row body={text} />
+      {options.firstComment.trim() && <Row body={options.firstComment} />}
+    </div>
+  );
+}
+
+function LinkedInPreview({ channel, caption, media, linkUrl, options }: { channel: ComposerChannel; caption: string; media: MediaDto[]; linkUrl: string | null; options: VersionOptions }) {
+  const shown = media.slice(0, 4);
+  const text = linkUrl && media.length > 0 && !caption.includes(linkUrl) ? `${caption}\n\n${linkUrl}`.trim() : caption;
+  return (
+    <div className="mx-auto w-full max-w-[400px] overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <Avatar name={channel.name} src={channel.avatarUrl} size={36} />
+        <div className="flex-1">
+          <p className="text-[13px] font-semibold">{channel.name}</p>
+          <p className="text-xs text-muted">Now · 🌐</p>
+        </div>
+        <MoreHorizontal className="size-4" />
+      </div>
+      <div className="px-3 py-2.5">{text ? <Caption text={text} clamp /> : !media.length && <p className="text-xs text-faint">Write something…</p>}</div>
+      {shown.length > 0 && (
+        <div className={cn('grid gap-0.5', shown.length > 1 && 'grid-cols-2')}>
+          {shown.map((m) => (
+            <div key={m.id} className={cn('bg-subtle', shown.length === 1 ? 'aspect-[4/3]' : 'aspect-square')}>
+              <MediaView m={m} />
+            </div>
+          ))}
+        </div>
+      )}
+      {linkUrl && shown.length === 0 && (
+        <div className="mx-3 mb-2 rounded-md border border-line bg-subtle px-3 py-2">
+          <p className="truncate text-[13px] font-medium">{(() => { try { return new URL(linkUrl).hostname; } catch { return linkUrl; } })()}</p>
+        </div>
+      )}
+      <div className="mt-1 flex justify-around border-t border-line py-2 text-[13px] text-muted">
+        <span className="flex items-center gap-1.5"><ThumbsUp className="size-4" /> Like</span>
+        <span className="flex items-center gap-1.5"><MessageCircle className="size-4" /> Comment</span>
+        <span className="flex items-center gap-1.5"><Repeat2 className="size-4" /> Repost</span>
+      </div>
+      {options.firstComment.trim() && (
+        <div className="flex gap-2 border-t border-line px-3 py-2">
+          <Avatar name={channel.name} src={channel.avatarUrl} size={24} />
+          <div className="min-w-0 rounded-lg bg-subtle px-3 py-1.5">
+            <p className="text-xs font-semibold">{channel.name}</p>
+            <Caption text={options.firstComment} clamp />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function YouTubePreview({ channel, caption, media, options }: { channel: ComposerChannel; caption: string; media: MediaDto[]; options: VersionOptions }) {
+  const v = media[0];
+  const short = isShort(v ? { ...v, durationSec: v.durationSec ?? null } : undefined);
+  const title = youtubeTitle(caption, options);
+  return (
+    <div className={cn('mx-auto w-full overflow-hidden rounded-xl border border-line bg-surface shadow-card', short ? 'max-w-[260px]' : 'max-w-[400px]')}>
+      <div className={cn('bg-black', short ? 'aspect-[9/16]' : 'aspect-video')}>
+        {v ? <MediaView m={v} /> : <div className="flex size-full items-center justify-center text-xs text-white/60">YouTube needs a video</div>}
+      </div>
+      <div className="flex gap-2.5 p-3">
+        <Avatar name={channel.name} src={channel.avatarUrl} size={32} />
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-[13px] font-semibold">{title || <span className="text-faint">Video title</span>}</p>
+          <p className="text-xs text-muted">
+            {channel.name} · {short ? 'Short' : 'Video'} · {options.ytPrivacy}
+          </p>
+        </div>
+      </div>
+      {options.firstComment.trim() && (
+        <div className="border-t border-line px-3 py-2">
+          <p className="text-xs font-semibold">{channel.username ? `@${channel.username}` : channel.name}</p>
+          <Caption text={options.firstComment} clamp />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PostPreview({ options = DEFAULT_OPTIONS, ...props }: { channel: ComposerChannel; caption: string; media: MediaDto[]; linkUrl: string | null; options?: VersionOptions }) {
-  return props.channel.platform === 'INSTAGRAM' ? <InstagramPreview {...props} options={options} /> : <FacebookPreview {...props} options={options} />;
+  switch (props.channel.platform) {
+    case 'INSTAGRAM':
+      return <InstagramPreview {...props} options={options} />;
+    case 'FACEBOOK':
+      return <FacebookPreview {...props} options={options} />;
+    case 'X':
+      return <XPreview {...props} options={options} />;
+    case 'LINKEDIN':
+      return <LinkedInPreview {...props} options={options} />;
+    case 'YOUTUBE':
+      return <YouTubePreview {...props} options={options} />;
+  }
 }

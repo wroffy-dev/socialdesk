@@ -64,7 +64,13 @@ DRAFT ──schedule/queue/publish now──▶ SCHEDULED ──claim──▶ P
 
 ## Adapters
 
-`src/server/adapters/types.ts` defines `SocialAdapter`: capabilities (computed from granted permissions), publish, verify, health check, account/post metrics, comments and replies. Unsupported operations raise an explicit error. `adapterFor()` picks the Meta adapters or the mock adapter; channels connected in mock mode always use the mock, so they can never reach a real platform. Adding a platform means a new adapter, an OAuth flow and entries in `src/lib/platforms.ts`.
+Five platforms: Instagram and Facebook (Meta Graph API), X (API v2), LinkedIn (versioned REST API) and YouTube (Data API v3). `src/server/adapters/types.ts` defines `SocialAdapter`: capabilities (computed from granted permissions), publish, verify, health check, account/post metrics, comments and replies. Unsupported operations raise an explicit error. `adapterFor()` picks the Meta adapters or the mock adapter; channels connected in mock mode always use the mock, so they can never reach a real platform. Adding a platform means a new adapter, an OAuth provider in `src/server/integrations/` and entries in `src/lib/platforms.ts`.
+
+X, LinkedIn and YouTube receive media as bytes (chunked or resumable uploads, read from storage in pieces); Meta fetches signed URLs. Access tokens for X and Google are short-lived: `integrations/tokens.ts` refreshes an expiring token under a row lock before any API call, so concurrent jobs refresh it once (X rotates refresh tokens); a refused refresh marks the channel *Reconnect needed* and fails the publish as an auth error. OAuth is generic per provider (`/api/oauth/{meta,x,google,linkedin}/callback`); X uses PKCE with the verifier stored encrypted next to the hashed state.
+
+## Best time to post
+
+`services/best-time.ts` places each published post that has synced metrics (last 6 months) into its weekday × hour in the workspace timezone. Engagement (likes + comments + shares + saves) is divided by the channel's median post, so channels of different size combine fairly; a slot's score is the average. Recommendations appear only with at least 6 posts and only for slots with at least 2 posts — otherwise the UI says there isn't enough data. Nothing is estimated or taken from industry averages.
 
 ## Plans and limits
 

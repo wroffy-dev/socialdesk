@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { Prisma, type SocialPlatform } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { db, type Tx } from '../db';
 import { badRequest, conflict, notFound } from '../errors';
 import { audit } from '../audit';
 import { assertCan, type WorkspaceCtx } from '../auth/ctx';
 import { assertWithinLimit, getWorkspacePlan, limitOf } from './entitlements';
-import { channelDto, integrationMode } from './channels';
+import { availablePlatforms, channelDto, integrationMode } from './channels';
+import { PLATFORMS, type Platform } from '@/lib/platforms';
 
 const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#0ea5e9', '#8b5cf6', '#ef4444', '#14b8a6'];
 
@@ -38,7 +39,7 @@ function isUniqueViolation(err: unknown) {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 
-/** The workspace's projects with their Instagram and Facebook slots. */
+/** The workspace's projects with one slot per platform. */
 export async function listProjects(ctx: WorkspaceCtx) {
   assertCan(ctx, 'channels.view');
   const [projects, accounts, postCounts, plan] = await Promise.all([
@@ -54,12 +55,13 @@ export async function listProjects(ctx: WorkspaceCtx) {
   const posts = new Map(postCounts.map((p) => [p.projectId, p._count._all]));
   return {
     mode: integrationMode(),
+    available: availablePlatforms(),
     planName: plan.planName,
     limit: limitOf(plan, 'projects'),
     used: projects.length,
     projects: projects.map((p) => {
       const mine = accounts.filter((a) => a.projectId === p.id);
-      const slot = (platform: SocialPlatform) => {
+      const slot = (platform: Platform) => {
         const a = mine.find((x) => x.platform === platform);
         return a ? channelDto(a) : null;
       };
@@ -69,8 +71,8 @@ export async function listProjects(ctx: WorkspaceCtx) {
         color: p.color,
         createdAt: p.createdAt.toISOString(),
         postCount: posts.get(p.id) ?? 0,
-        instagram: slot('INSTAGRAM'),
-        facebook: slot('FACEBOOK'),
+        /** One slot per platform: the linked account, or null. */
+        slots: Object.fromEntries(PLATFORMS.map((pl) => [pl, slot(pl)])) as Record<Platform, ReturnType<typeof slot>>,
       };
     }),
   };

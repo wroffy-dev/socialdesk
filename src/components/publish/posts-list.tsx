@@ -19,6 +19,7 @@ import { api, errorMessage } from '@/lib/api-client';
 import { formatAgo, formatDateTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { PostListItem } from '@/server/services/posts';
+import type { Platform } from '@/lib/platforms';
 
 const TABS = [
   ['all', 'All'],
@@ -51,7 +52,7 @@ export function PostsList({
 }: {
   workspace: { id: string; slug: string; timezone: string };
   projects: { id: string; name: string; color: string }[];
-  channels: { id: string; projectId: string; name: string; username: string | null; avatarUrl: string | null; platform: 'INSTAGRAM' | 'FACEBOOK' }[];
+  channels: { id: string; projectId: string; name: string; username: string | null; avatarUrl: string | null; platform: Platform }[];
   tags: { id: string; name: string; color: string }[];
   canEdit: boolean;
   canPublish: boolean;

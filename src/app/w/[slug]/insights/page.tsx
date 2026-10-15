@@ -1,5 +1,6 @@
 import { BarChart3 } from 'lucide-react';
 import { requireWorkspacePage } from '@/server/auth/workspace';
+import { hasPermission } from '@/server/auth/ctx';
 import { db } from '@/server/db';
 import { PageHeader } from '@/components/page-header';
 import { InsightsView } from '@/components/insights/insights-view';
@@ -20,7 +21,7 @@ export default async function InsightsPage({ params }: { params: Promise<{ slug:
   return (
     <>
       <PageHeader icon={<BarChart3 />} title="Insights" description="Performance from the platforms' official APIs. Metrics a platform doesn't share are shown as unavailable." />
-      <InsightsView workspace={{ id: ctx.workspace.id, slug }} projects={projects} channels={channels} />
+      <InsightsView workspace={{ id: ctx.workspace.id, slug }} projects={projects} channels={channels} canManageQueue={hasPermission(ctx, 'queue.manage')} />
     </>
   );
 }

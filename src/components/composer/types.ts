@@ -1,6 +1,7 @@
 import type { MediaDto } from '@/server/services/media';
 import type { PostDto } from '@/server/services/posts';
 import type { VersionOptions } from '@/lib/post-options';
+import type { Platform } from '@/lib/platforms';
 
 export type { MediaDto, PostDto };
 
@@ -16,7 +17,7 @@ export interface ComposerChannel {
   name: string;
   username: string | null;
   avatarUrl: string | null;
-  platform: 'INSTAGRAM' | 'FACEBOOK';
+  platform: Platform;
   status: 'CONNECTED' | 'NEEDS_REAUTH' | 'ERROR' | 'DISCONNECTED';
 }
 

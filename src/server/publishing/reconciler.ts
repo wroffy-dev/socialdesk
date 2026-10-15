@@ -3,7 +3,7 @@ import { env } from '../env';
 import { adapterFor } from '../adapters/registry';
 import { enqueuePublish } from '../queue/producer';
 import { refreshPostStatus } from './status';
-import { toAccountRef } from '../services/channels';
+import { accountRef } from '../integrations/tokens';
 import { buildPublishInput } from './input';
 import { postFirstComment } from './first-comment';
 
@@ -78,7 +78,7 @@ export async function reconcile(now = new Date()) {
     try {
       const { input } = await buildPublishInput(v.id);
       const since = new Date((v.attempts[0]?.startedAt ?? v.updatedAt).getTime() - 2 * 60_000);
-      const outcome = await adapterFor(v.socialAccount).verifyPublish({ ...input, account: toAccountRef(v.socialAccount) }, since);
+      const outcome = await adapterFor(v.socialAccount).verifyPublish({ ...input, account: await accountRef(v.socialAccount) }, since);
       if (outcome.status === 'unknown') continue;
       await db.$transaction(async (tx) => {
         if (outcome.status === 'published') {

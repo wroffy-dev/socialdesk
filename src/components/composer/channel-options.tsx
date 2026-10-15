@@ -5,15 +5,45 @@ import { AtSign, Clapperboard, ImageIcon, MessageCircle, Plus, Smartphone, UserP
 import { Input, Textarea } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/checkbox';
-import { charCount, inferFormat } from '@/lib/platforms';
-import { FB_COMMENT_MAX, IG_COMMENT_MAX, IG_MAX_COLLABORATORS, IG_MAX_USER_TAGS, type UserTag, type VersionOptions } from '@/lib/post-options';
+import { charCount, inferFormat, xLength, type Platform, type PostFormat } from '@/lib/platforms';
+import {
+  FB_COMMENT_MAX,
+  IG_COMMENT_MAX,
+  IG_MAX_COLLABORATORS,
+  IG_MAX_USER_TAGS,
+  LI_COMMENT_MAX,
+  X_REPLY_MAX,
+  YT_COMMENT_MAX,
+  YT_TITLE_MAX,
+  youtubeTitle,
+  type UserTag,
+  type VersionOptions,
+} from '@/lib/post-options';
 import { cn } from '@/lib/utils';
 import type { ComposerChannel, MediaDto } from './types';
 
 const USERNAME = /^[a-z0-9._]{1,30}$/;
+
+const COMMENT_MAX: Record<Platform, number> = { INSTAGRAM: IG_COMMENT_MAX, FACEBOOK: FB_COMMENT_MAX, X: X_REPLY_MAX, LINKEDIN: LI_COMMENT_MAX, YOUTUBE: YT_COMMENT_MAX };
+const COMMENT_HINT: Record<Platform, string> = {
+  INSTAGRAM: 'Posted right after publishing, e.g. extra hashtags or a link',
+  FACEBOOK: 'Posted right after publishing, e.g. a link or extra details',
+  X: 'Posted as a reply to your post right after publishing, e.g. a link or a second part',
+  LINKEDIN: 'Posted right after publishing, e.g. a link (posts with links outside comments can get less reach)',
+  YOUTUBE: 'Posted on the video right after uploading, e.g. a pinned-style note or links',
+};
 const cleanUsername = (raw: string) => raw.trim().replace(/^@+/, '').toLowerCase();
 
-const FORMAT_LABEL = { FEED: 'Photo post', CAROUSEL: 'Carousel', REEL: 'Reel', STORY: 'Story', TEXT: 'Text post', LINK: 'Link post' } as const;
+const FORMAT_LABEL: Record<PostFormat, string> = {
+  FEED: 'Photo post',
+  CAROUSEL: 'Carousel',
+  REEL: 'Reel',
+  STORY: 'Story',
+  TEXT: 'Text post',
+  LINK: 'Link post',
+  VIDEO: 'Video',
+  SHORT: 'Short',
+};
 
 /**
  * Per-channel publishing options: Story vs post, collaborators, tagged people and Reel settings
@@ -38,7 +68,9 @@ export function ChannelOptions({
   const story = ig && options.igType === 'story';
   const format = inferFormat(channel.platform, { caption, media }, options);
   const isReel = format === 'REEL';
-  const commentMax = ig ? IG_COMMENT_MAX : FB_COMMENT_MAX;
+  const commentMax = COMMENT_MAX[channel.platform];
+  const count = channel.platform === 'X' ? xLength : charCount;
+  const yt = channel.platform === 'YOUTUBE';
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-line p-3" data-testid={`options-${channel.id}`}>
@@ -122,24 +154,131 @@ export function ChannelOptions({
             </div>
           )}
 
+          {yt && <YouTubeFields options={options} caption={caption} disabled={disabled} onChange={onChange} format={format} />}
+
           <div className="flex flex-col gap-1.5">
             <span className="flex items-center gap-1.5 text-[13px] font-medium">
-              <MessageCircle className="size-4" /> First comment
+              <MessageCircle className="size-4" /> {channel.platform === 'X' ? 'Reply to your post' : 'First comment'}
             </span>
             <Textarea
               value={options.firstComment}
               onChange={(e) => onChange({ firstComment: e.target.value })}
               readOnly={disabled}
-              placeholder={ig ? 'Posted right after publishing, e.g. extra hashtags or a link' : 'Posted right after publishing, e.g. a link or extra details'}
+              placeholder={COMMENT_HINT[channel.platform]}
               className="min-h-[64px]"
               aria-label={`First comment for ${channel.username ?? channel.name}`}
             />
-            <span className={cn('self-end text-xs tabular-nums text-muted', charCount(options.firstComment) > commentMax && 'text-danger')}>
-              {charCount(options.firstComment).toLocaleString()} / {commentMax.toLocaleString()}
+            <span className={cn('self-end text-xs tabular-nums text-muted', count(options.firstComment) > commentMax && 'text-danger')}>
+              {count(options.firstComment).toLocaleString()} / {commentMax.toLocaleString()}
             </span>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** YouTube upload settings: title, visibility, the required "made for kids" answer and tags. */
+function YouTubeFields({
+  options,
+  caption,
+  format,
+  disabled,
+  onChange,
+}: {
+  options: VersionOptions;
+  caption: string;
+  format: PostFormat;
+  disabled: boolean;
+  onChange: (patch: Partial<VersionOptions>) => void;
+}) {
+  const [tag, setTag] = useState('');
+  const derived = youtubeTitle(caption, { ytTitle: '' });
+  const addTag = () => {
+    const t = tag.trim().replace(/^#/, '');
+    if (!t || options.ytTags.includes(t)) return;
+    onChange({ ytTags: [...options.ytTags, t] });
+    setTag('');
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <span className="flex items-center gap-1.5 text-[13px] font-medium">
+        <Clapperboard className="size-4" /> YouTube {format === 'SHORT' ? 'Short' : 'video'} settings
+      </span>
+      {format === 'SHORT' && <p className="-mt-1 text-xs text-muted">Vertical and up to 3 minutes, so YouTube shows it as a Short.</p>}
+      <label className="flex flex-col gap-1 text-[13px]">
+        Title
+        <Input
+          value={options.ytTitle}
+          onChange={(e) => onChange({ ytTitle: e.target.value })}
+          readOnly={disabled}
+          maxLength={200}
+          placeholder={derived ? `Defaults to: ${derived}` : 'Video title (required)'}
+          aria-label="YouTube title"
+        />
+        <span className={cn('self-end text-xs tabular-nums text-muted', charCount(options.ytTitle) > YT_TITLE_MAX && 'text-danger')}>
+          {charCount(options.ytTitle)} / {YT_TITLE_MAX}
+        </span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span>Visibility</span>
+        <div className="inline-flex rounded-lg border border-line p-0.5" role="radiogroup" aria-label="YouTube visibility">
+          {(['public', 'unlisted', 'private'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={options.ytPrivacy === v}
+              disabled={disabled}
+              onClick={() => onChange({ ytPrivacy: v })}
+              className={cn('rounded-md px-2.5 py-1 capitalize transition-colors disabled:opacity-50', options.ytPrivacy === v ? 'bg-fg text-canvas' : 'text-muted hover:text-fg')}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+      <fieldset className="flex flex-col gap-1 text-[13px]">
+        <legend className="mb-1">Is this video made for kids? (required by YouTube)</legend>
+        {[
+          [false, 'No, it’s not made for kids'],
+          [true, 'Yes, it’s made for kids'],
+        ].map(([value, label]) => (
+          <label key={String(value)} className="flex items-center gap-2">
+            <input type="radio" name="yt-kids" checked={options.ytMadeForKids === value} disabled={disabled} onChange={() => onChange({ ytMadeForKids: value as boolean })} className="accent-[rgb(var(--accent-ink))]" />
+            {label as string}
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex flex-col gap-1.5 text-[13px]">
+        Tags
+        <div className="flex flex-wrap items-center gap-1.5">
+          {options.ytTags.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-subtle py-0.5 pl-2 pr-1">
+              {t}
+              {!disabled && (
+                <button type="button" onClick={() => onChange({ ytTags: options.ytTags.filter((x) => x !== t) })} className="rounded-full p-0.5 hover:bg-hover" aria-label={`Remove tag ${t}`}>
+                  <X className="size-3" />
+                </button>
+              )}
+            </span>
+          ))}
+          {!disabled && (
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                addTag();
+              }}
+            >
+              <Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="tag" className="h-8 w-36" aria-label="Add YouTube tag" maxLength={100} />
+              <Button type="submit" size="sm" variant="outline" disabled={!tag.trim()}>
+                <Plus /> Add
+              </Button>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

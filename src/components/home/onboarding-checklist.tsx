@@ -28,7 +28,7 @@ export function OnboardingChecklist({
     {
       done: hasChannels,
       title: 'Connect a channel',
-      body: 'Add an Instagram professional account or a Facebook Page.',
+      body: 'Add Instagram, Facebook, X, LinkedIn or YouTube to a project.',
       action: canManageChannels && (
         <Button size="sm" variant="primary" onClick={connect.open} disabled={!emailVerified}>
           Connect

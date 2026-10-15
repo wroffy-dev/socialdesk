@@ -76,3 +76,28 @@ test('composer blocks invalid Instagram posts', async ({ page }) => {
   await expect(page.getByText('Publishes as: Story')).toBeVisible();
   await expect(page.getByText('An Instagram Story needs exactly one image or video.').first()).toBeVisible();
 });
+
+test('connects X, LinkedIn and YouTube to a project', async ({ page }) => {
+  const email = await signUp(page);
+  const slug = await createWorkspace(page, `Five Channels ${Date.now() % 10000}`);
+  await verifyEmail(page, email);
+  for (const [platform, account, shown] of [
+    ['X', 'Mock X 1', '@mock_x_1'],
+    ['LINKEDIN', 'Mock LinkedIn Page 1', 'Mock LinkedIn Page 1'],
+    ['YOUTUBE', 'Mock YouTube Channel 1', '@mockchannel1'],
+  ] as const) {
+    await page.goto(`/w/${slug}/channels`);
+    await page.getByTestId('project-card').first().locator(`a[href*="platform=${platform}"]`).click();
+    await page.waitForURL(/channels\/connect\?pending=/);
+    await page.getByLabel(`Connect ${account}`).check();
+    await page.getByRole('button', { name: /^Link to / }).click();
+    await page.waitForURL(/channels\?connected=/);
+    await expect(page.getByTestId('project-card').first().getByText(shown, { exact: true })).toBeVisible();
+  }
+  // The composer offers all three, with YouTube's own settings.
+  await page.goto(`/w/${slug}/compose`);
+  await expect(page.getByRole('button', { name: /mock_x_1/, pressed: true })).toBeVisible();
+  await page.getByText('YouTube options').click();
+  await expect(page.getByLabel('YouTube title')).toBeVisible();
+  await expect(page.getByText('YouTube needs exactly one video.').first()).toBeVisible();
+});

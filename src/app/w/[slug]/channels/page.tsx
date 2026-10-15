@@ -20,7 +20,7 @@ export default async function ChannelsPage({
   const data = await listProjects(ctx);
   return (
     <>
-      <PageHeader icon={<FolderKanban />} title="Projects & channels" description="Each project is a brand or client with its own Instagram account and Facebook Page." />
+      <PageHeader icon={<FolderKanban />} title="Projects & channels" description="Each project is a brand or client with one account per platform: Instagram, Facebook, X, LinkedIn and YouTube." />
       <ProjectsManager
         initial={data}
         workspace={{ id: ctx.workspace.id, slug }}

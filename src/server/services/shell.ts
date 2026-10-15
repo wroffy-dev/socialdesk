@@ -3,6 +3,8 @@ import type { WorkspaceCtx } from '../auth/ctx';
 import { permissionsFor } from '@/lib/permissions';
 import { listUserWorkspaces } from './workspaces';
 import { getWorkspacePlan, limitOf } from './entitlements';
+import { availablePlatforms } from './channels';
+import { PLATFORMS, type Platform } from '@/lib/platforms';
 
 /** Data the sidebar needs on every workspace page. */
 export async function getShellData(ctx: WorkspaceCtx, user: { isSuperAdmin: boolean; image: string | null }) {
@@ -35,10 +37,13 @@ export async function getShellData(ctx: WorkspaceCtx, user: { isSuperAdmin: bool
     channels: withCounts,
     projects: projects.map((p) => ({
       ...p,
-      instagram: withCounts.find((c) => c.projectId === p.id && c.platform === 'INSTAGRAM') ?? null,
-      facebook: withCounts.find((c) => c.projectId === p.id && c.platform === 'FACEBOOK') ?? null,
+      slots: Object.fromEntries(PLATFORMS.map((pl) => [pl, withCounts.find((c) => c.projectId === p.id && c.platform === pl) ?? null])) as Record<
+        Platform,
+        (typeof withCounts)[number] | null
+      >,
     })),
     projectLimit: limitOf(plan, 'projects'),
+    availablePlatforms: availablePlatforms(),
     counts: { scheduled, unanswered },
   };
 }

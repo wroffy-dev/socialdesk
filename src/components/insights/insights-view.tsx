@@ -17,6 +17,8 @@ import { api, errorMessage } from '@/lib/api-client';
 import { formatAgo } from '@/lib/time';
 import { cn, formatNumber } from '@/lib/utils';
 import type { Insights } from '@/server/services/insights';
+import type { Platform } from '@/lib/platforms';
+import { BestTimeCard } from './best-time-card';
 
 // Chart tokens (single-series charts use categorical slot 1 of the validated reference palette).
 const SERIES = '#2a78d6';
@@ -37,10 +39,12 @@ export function InsightsView({
   workspace,
   projects,
   channels,
+  canManageQueue = false,
 }: {
   workspace: { id: string; slug: string };
+  canManageQueue?: boolean;
   projects: { id: string; name: string; color: string }[];
-  channels: { id: string; projectId: string; name: string; username: string | null; platform: 'INSTAGRAM' | 'FACEBOOK'; avatarUrl: string | null }[];
+  channels: { id: string; projectId: string; name: string; username: string | null; platform: Platform; avatarUrl: string | null }[];
 }) {
   const [range, setRange] = useState<RangeKey>('30d');
   const [from, setFrom] = useState('');
@@ -207,6 +211,8 @@ export function InsightsView({
               </ResponsiveContainer>
             </ChartCard>
           </div>
+
+          <BestTimeCard workspaceId={workspace.id} channels={selected} canManageQueue={canManageQueue} />
 
           <section>
             <h2 className="section-title mb-2">By channel</h2>

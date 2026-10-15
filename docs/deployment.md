@@ -36,7 +36,7 @@ Media uploads live on the `storage` volume (mounted at `/data/storage` in `web` 
    | `META_MODE` | `development` until App Review is approved, then `live` |
    | `META_APP_ID`, `META_APP_SECRET` | from the Meta app (see [meta-setup.md](meta-setup.md)) |
 
-   Optional: `META_GRAPH_VERSION` (default `v23.0`), `MAX_IMAGE_MB`, `MAX_VIDEO_MB`, `WORKER_CONCURRENCY`, `PUBLISH_MAX_ATTEMPTS`, `SIGNUPS_ENABLED`, `BACKUP_RETENTION_DAYS`, and the Razorpay variables when billing is enabled.
+   Optional: X, LinkedIn and YouTube credentials (`X_CLIENT_ID`/`X_CLIENT_SECRET`, `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET`/`LINKEDIN_API_VERSION`/`LINKEDIN_PAGES`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; see [channels-setup.md](channels-setup.md)), `META_GRAPH_VERSION` (default `v23.0`), `MAX_IMAGE_MB`, `MAX_VIDEO_MB`, `WORKER_CONCURRENCY`, `PUBLISH_MAX_ATTEMPTS`, `SIGNUPS_ENABLED`, `BACKUP_RETENTION_DAYS`, and the Razorpay variables when billing is enabled.
 
    The app validates every variable at startup and refuses to start with a message naming the bad one. `META_MODE=mock` is refused in production.
 

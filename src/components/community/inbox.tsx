@@ -121,7 +121,7 @@ export function CommunityInbox({
           {supported.length === 0 && (
             <Alert variant="info" title="No channels can share comments yet">
               {channels.length === 0
-                ? 'Connect an Instagram or Facebook channel first.'
+                ? 'Connect a channel that supports comments first (Instagram, Facebook or YouTube).'
                 : channels.every((c) => c.mode === 'MOCK')
                   ? 'Mock channels don’t have comments. Connect a real channel through Meta to use the inbox.'
                   : 'Reconnect your channels and allow the comment permissions to see comments here.'}

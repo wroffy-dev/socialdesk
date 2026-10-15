@@ -16,16 +16,16 @@ import { ChannelAvatar, PlatformIcon } from '@/components/platform-icon';
 import { connectHref } from './connect-dialog';
 import { api, errorMessage } from '@/lib/api-client';
 import { formatAgo } from '@/lib/time';
-import { COMING_SOON, PLATFORM_INFO } from '@/lib/platforms';
+import { ACCOUNT_NOUN, COMING_SOON, PLATFORMS, PLATFORM_INFO } from '@/lib/platforms';
 import type { ProjectList } from '@/server/services/projects';
 
 type Project = ProjectList['projects'][number];
-type Channel = NonNullable<Project['instagram']>;
+type Channel = NonNullable<Project['slots'][keyof Project['slots']]>;
 
 const MODE_BADGE = {
   MOCK: { label: 'Mock', variant: 'warning' as const, hint: 'Simulated channel for local testing. Nothing is ever published.' },
   DEVELOPMENT: { label: 'Development', variant: 'info' as const, hint: 'Connected while the Meta app is in Development mode.' },
-  LIVE: { label: 'Live', variant: 'success' as const, hint: 'Connected through the approved Meta app.' },
+  LIVE: { label: 'Live', variant: 'success' as const, hint: 'Connected through the platform’s live app.' },
 };
 
 export function ProjectsManager({
@@ -80,7 +80,7 @@ export function ProjectsManager({
   };
 
   const remove = async (p: Project) => {
-    if (p.instagram || p.facebook) {
+    if (Object.values(p.slots).some(Boolean)) {
       toast.error('Disconnect this project’s channels before deleting it.');
       return;
     }
@@ -105,7 +105,7 @@ export function ProjectsManager({
       {error && <Alert variant="danger" title="Couldn't connect">{error}</Alert>}
       {data.mode === 'MOCK' && (
         <Alert variant="warning" title="Mock mode">
-          META_MODE is set to <code>mock</code>. Connecting creates simulated channels and publishing never reaches Instagram or Facebook. Configure a Meta app to connect real accounts.
+          META_MODE is set to <code>mock</code>. Connecting creates simulated channels on every platform and publishing never reaches a real network. Configure the platform apps to connect real accounts.
         </Alert>
       )}
       {data.mode === 'DEVELOPMENT' && (
@@ -116,7 +116,7 @@ export function ProjectsManager({
 
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-[13px] text-muted">
-          {data.used} of {data.limit ?? 'unlimited'} projects used on the {data.planName} plan · each project links one Instagram account and one Facebook Page
+          {data.used} of {data.limit ?? 'unlimited'} projects used on the {data.planName} plan · each project links one account per platform
         </p>
         {canManage && (
           <Button
@@ -140,7 +140,7 @@ export function ProjectsManager({
         </p>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 2xl:grid-cols-2">
         {data.projects.map((p) => (
           <Card key={p.id} className="flex flex-col gap-3 p-4" data-testid="project-card">
             <div className="flex items-center gap-2.5">
@@ -168,15 +168,18 @@ export function ProjectsManager({
                 </DropdownMenu>
               )}
             </div>
-            {(['INSTAGRAM', 'FACEBOOK'] as const).map((platform) => {
-              const ch = platform === 'INSTAGRAM' ? p.instagram : p.facebook;
+            {PLATFORMS.map((platform) => {
+              const ch = p.slots[platform];
+              const available = data.available[platform];
               return ch ? (
                 <ChannelSlot key={platform} channel={ch} workspace={workspace} projectId={p.id} canManage={canManage} onChanged={reload} />
               ) : (
                 <div key={platform} className="flex items-center gap-3 rounded-lg border border-dashed border-line p-3">
                   <PlatformIcon platform={platform} size={32} muted />
-                  <span className="min-w-0 flex-1 text-[13px] text-muted">No {PLATFORM_INFO[platform].label} {platform === 'FACEBOOK' ? 'Page' : 'account'} linked</span>
-                  {canManage && (
+                  <span className="min-w-0 flex-1 text-[13px] text-muted">
+                    {available ? `No ${ACCOUNT_NOUN[platform]} linked` : `${PLATFORM_INFO[platform].label}: not set up on this server yet`}
+                  </span>
+                  {canManage && available && (
                     <Button asChild={emailVerified} size="sm" variant="outline" disabled={!emailVerified} title={emailVerified ? undefined : 'Verify your email first'}>
                       {emailVerified ? (
                         <a href={connectHref(workspace.id, p.id, platform)}>
@@ -217,7 +220,7 @@ export function ProjectsManager({
           >
             <DialogHeader>
               <DialogTitle>{editing?.id ? 'Rename project' : 'New project'}</DialogTitle>
-              {!editing?.id && <DialogDescription>A brand or client. You can link one Instagram account and one Facebook Page to it.</DialogDescription>}
+              {!editing?.id && <DialogDescription>A brand or client. You can link one account per platform to it.</DialogDescription>}
             </DialogHeader>
             <DialogBody>
               <Input
