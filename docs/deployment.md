@@ -9,7 +9,7 @@ The stack is one Docker image used by three services, plus PostgreSQL, Redis and
 | `migrate` | `prisma migrate deploy && seed` | No | Runs once per deploy, then exits. `web`/`worker` start only if it succeeds |
 | `postgres` | postgres:16 | No | Volume `postgres` |
 | `redis` | redis:7 (AOF, `noeviction`) | No | Volume `redis`, password protected |
-| `backup` | `scripts/backup/run.sh` | No | Daily `pg_dump`, 14-day retention, volume `backups` |
+| `backup` | `scripts/backup/run.sh` (built into its own image) | No | Daily `pg_dump`, 14-day retention, volume `backups` |
 
 Media uploads live on the `storage` volume (mounted at `/data/storage` in `web` and `worker`).
 

@@ -95,15 +95,15 @@ services:
     mem_limit: 512m
 
   backup:
-    image: postgres:16-alpine
+    # Built from scripts/backup (postgres:16-alpine + run.sh); no bind mounts from the repo.
+    build: ./scripts/backup
+    image: socialdesk-backup:latest
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://socialdesk:${POSTGRES_PASSWORD}@postgres:5432/socialdesk
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
-      - ./scripts/backup/run.sh:/run.sh:ro
       - backups:/backups
-    entrypoint: ['/bin/sh', '/run.sh']
     depends_on:
       postgres:
         condition: service_healthy
