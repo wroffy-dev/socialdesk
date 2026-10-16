@@ -19,7 +19,7 @@ Media uploads live on the `storage` volume (mounted at `/data/storage` in `web` 
 
 ## Deploy with Coolify
 
-1. **Create a resource** → *Docker Compose* → point it at this repository and branch. Coolify reads `docker-compose.yml`.
+1. **Create a resource** → *Docker Compose* → point it at this repository and branch. Coolify reads `docker-compose.yaml` (its default Docker Compose location).
 2. **Environment variables** (Coolify → your resource → *Environment Variables*). Required:
 
    | Variable | Value |
