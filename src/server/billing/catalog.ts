@@ -30,6 +30,8 @@ export interface PlanDefinition {
   name: string;
   description: string;
   priceAmount: number;
+  /** Whole-year price; defaults to ten months (two months free). */
+  yearlyPriceAmount?: number;
   sortOrder: number;
   entitlements: Record<EntitlementKey, number | null | boolean>;
 }

@@ -11,6 +11,8 @@ import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { useConfirm } from '@/components/ui/confirm';
 import { api, errorMessage } from '@/lib/api-client';
 import { cn, formatMoney } from '@/lib/utils';
+import { bestYearlySavings, yearlySavingsPct, type BillingInterval } from '@/lib/pricing';
+import { IntervalToggle } from '@/components/marketing/pricing-plans';
 import type { getBilling } from '@/server/services/billing';
 import { SettingsSection } from './section';
 
@@ -39,6 +41,8 @@ export function BillingView({ workspaceId, initial, canManage }: { workspaceId: 
   const [data, setData] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState(false);
+  const savings = bestYearlySavings(data.plans);
+  const [interval, setInterval] = useState<BillingInterval>(data.subscription?.interval ?? 'month');
 
   // After checkout, wait for the verified webhook to switch the plan.
   useEffect(() => {
@@ -58,13 +62,13 @@ export function BillingView({ workspaceId, initial, canManage }: { workspaceId: 
   const upgrade = async (planKey: string) => {
     setBusy(planKey);
     try {
-      const co = await api<{ subscriptionId: string; keyId: string; planName: string }>(`/api/w/${workspaceId}/billing/checkout`, { body: { planKey } });
+      const co = await api<{ subscriptionId: string; keyId: string; planName: string }>(`/api/w/${workspaceId}/billing/checkout`, { body: { planKey, interval } });
       await loadCheckoutScript();
       new window.Razorpay!({
         key: co.keyId,
         subscription_id: co.subscriptionId,
         name: 'SocialDesk',
-        description: `${co.planName} plan`,
+        description: `${co.planName} plan, billed ${interval === 'year' ? 'yearly' : 'monthly'}`,
         theme: { color: '#3d7a2a' },
         // The browser callback is only a hint; the plan changes after the signed webhook arrives.
         handler: () => {
@@ -95,6 +99,7 @@ export function BillingView({ workspaceId, initial, canManage }: { workspaceId: 
           {data.subscription && (
             <Badge variant={data.subscription.status === 'ACTIVE' ? 'success' : 'warning'}>{data.subscription.status.toLowerCase().replace('_', ' ')}</Badge>
           )}
+          {paid && <span className="text-[13px] text-muted">Billed {data.subscription?.interval === 'year' ? 'yearly' : 'monthly'}</span>}
           {data.subscription?.cancelAtPeriodEnd && data.subscription.currentPeriodEnd && (
             <span className="text-[13px] text-muted">Ends {new Date(data.subscription.currentPeriodEnd).toLocaleDateString()}</span>
           )}
@@ -143,20 +148,28 @@ export function BillingView({ workspaceId, initial, canManage }: { workspaceId: 
       </SettingsSection>
 
       <SettingsSection title="Plans">
+        {savings > 0 && <IntervalToggle value={interval} onChange={setInterval} savings={savings} className="mb-4" />}
         <div className="grid gap-3 lg:grid-cols-2">
           {data.plans.map((p) => {
             const current = p.key === data.plan.key;
+            const yearly = interval === 'year' && p.yearlyPriceAmount ? p.yearlyPriceAmount : null;
+            const buyable = interval === 'year' ? p.purchasableYearly : p.purchasable;
             return (
               <div key={p.key} className={cn('flex flex-col gap-3 rounded-lg border p-4', current ? 'border-accent-ink bg-accent-soft/40' : 'border-line')}>
                 <div className="flex items-baseline justify-between">
                   <span className="font-semibold">{p.name}</span>
                   <span className="text-[13px]">
-                    {p.priceAmount ? (
+                    {!p.priceAmount ? (
+                      'Free'
+                    ) : yearly ? (
                       <>
-                        <strong className="text-base">{formatMoney(p.priceAmount, p.currency)}</strong> / {p.interval}
+                        <strong className="text-base">{formatMoney(yearly, p.currency)}</strong> / year
+                        {yearlySavingsPct(p.priceAmount, yearly) > 0 && <span className="ml-1.5 text-accent-ink">save {yearlySavingsPct(p.priceAmount, yearly)}%</span>}
                       </>
                     ) : (
-                      'Free'
+                      <>
+                        <strong className="text-base">{formatMoney(p.priceAmount, p.currency)}</strong> / month
+                      </>
                     )}
                   </span>
                 </div>
@@ -182,10 +195,10 @@ export function BillingView({ workspaceId, initial, canManage }: { workspaceId: 
                     <Button
                       variant="primary"
                       className="self-start"
-                      disabled={!data.billingEnabled || !p.purchasable || paid || awaiting}
+                      disabled={!data.billingEnabled || !buyable || paid || awaiting}
                       loading={busy === p.key}
                       onClick={() => upgrade(p.key)}
-                      title={!data.billingEnabled ? 'Available after the free beta' : undefined}
+                      title={!data.billingEnabled ? 'Available after the free beta' : !buyable && interval === 'year' ? 'Yearly billing isn’t available for this plan yet' : undefined}
                     >
                       {data.billingEnabled ? `Upgrade to ${p.name}` : 'Coming soon'}
                     </Button>

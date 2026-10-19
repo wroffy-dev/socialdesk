@@ -18,7 +18,7 @@ export default function FeaturesPage() {
   return (
     <>
       <section className="px-2 pt-2 sm:px-3 sm:pt-3">
-        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] text-white">
+        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] dark:ring-1 dark:ring-white/10 text-white">
           <div className="sd-grid-bg absolute inset-0 -z-10" />
           <div className="sd-aurora absolute -left-24 -top-40 -z-10 size-[520px] rounded-full bg-[#7ed957]/25 blur-[120px]" />
           <div className="sd-aurora absolute -right-32 top-10 -z-10 size-[480px] rounded-full bg-[#8b5cf6]/25 blur-[120px] [animation-delay:-6s]" />

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, BarChart3, Building2, FileText, History, Plug, Send, Tags, Users } from 'lucide-react';
+import { Activity, BarChart3, Building2, FileText, History, MessageSquareQuote, Plug, Send, Tags, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
@@ -14,6 +14,7 @@ const ITEMS = [
   { href: '/admin/integrations', label: 'Integration health', icon: Plug },
   { href: '/admin/jobs', label: 'Background jobs', icon: Activity },
   { href: '/admin/audit', label: 'Audit log', icon: History },
+  { href: '/admin/testimonials', label: 'Testimonials & logos', icon: MessageSquareQuote },
   { href: '/admin/content', label: 'Legal pages', icon: FileText },
 ];
 

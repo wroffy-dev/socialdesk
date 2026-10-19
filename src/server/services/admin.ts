@@ -187,6 +187,8 @@ export const planUpdateSchema = z.object({
   priceAmount: z.number().int().min(0).max(100_000_000),
   currency: z.string().length(3),
   razorpayPlanId: z.string().max(60).nullable(),
+  yearlyPriceAmount: z.number().int().min(0).max(1_000_000_000).nullable().default(null),
+  razorpayYearlyPlanId: z.string().max(60).nullable().default(null),
   isActive: z.boolean(),
   isPublic: z.boolean(),
   sortOrder: z.number().int().min(0).max(100),
@@ -199,7 +201,7 @@ export const planUpdateSchema = z.object({
   ),
 });
 
-export async function updatePlan(admin: Admin, planId: string, input: z.infer<typeof planUpdateSchema>) {
+export async function updatePlan(admin: Admin, planId: string, input: z.input<typeof planUpdateSchema>) {
   const data = planUpdateSchema.parse(input);
   const plan = await db.plan.findUnique({ where: { id: planId } });
   if (!plan) throw notFound('Plan');
@@ -213,6 +215,8 @@ export async function updatePlan(admin: Admin, planId: string, input: z.infer<ty
         priceAmount: data.priceAmount,
         currency: data.currency.toUpperCase(),
         razorpayPlanId: data.razorpayPlanId || null,
+        yearlyPriceAmount: data.yearlyPriceAmount || null,
+        razorpayYearlyPlanId: data.razorpayYearlyPlanId || null,
         isActive: data.isActive,
         isPublic: data.isPublic,
         sortOrder: data.sortOrder,

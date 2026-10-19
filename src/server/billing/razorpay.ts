@@ -32,9 +32,9 @@ export interface RazorpaySubscription {
   notes?: Record<string, string>;
 }
 
-export function createSubscription(planId: string, notes: Record<string, string>) {
-  // total_count is required by Razorpay; 120 monthly cycles ≈ 10 years, i.e. until cancelled.
-  return call<RazorpaySubscription>('POST', '/subscriptions', { plan_id: planId, total_count: 120, customer_notify: 1, notes });
+export function createSubscription(planId: string, notes: Record<string, string>, interval: 'month' | 'year' = 'month') {
+  // total_count is required by Razorpay; 10 years of cycles, i.e. until cancelled.
+  return call<RazorpaySubscription>('POST', '/subscriptions', { plan_id: planId, total_count: interval === 'year' ? 10 : 120, customer_notify: 1, notes });
 }
 
 export function cancelSubscription(id: string, atCycleEnd: boolean) {

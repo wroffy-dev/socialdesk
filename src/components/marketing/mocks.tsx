@@ -191,7 +191,7 @@ export function InboxMock() {
 export function InstagramMock() {
   return (
     <div className="mx-auto w-full max-w-[280px]" aria-hidden>
-      <div className="overflow-hidden rounded-[28px] border-[6px] border-fg bg-surface shadow-pop">
+      <div className="overflow-hidden rounded-[28px] border-[6px] border-[#1b1c1a] bg-surface shadow-pop">
         <div className="flex items-center gap-2 px-3 py-2">
           <PlatformIcon platform="INSTAGRAM" size={22} />
           <div className="text-[11px] leading-tight">

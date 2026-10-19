@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ChannelAvatar, PlatformIcon } from '@/components/platform-icon';
 import { COMING_SOON, PLATFORMS } from '@/lib/platforms';
+import { ThemeSwitch } from '@/components/theme';
 import { ROLE_LABEL } from '@/lib/permissions';
 import { Logo } from '@/components/brand';
 import { useCan, useShell } from './shell-context';
@@ -322,6 +323,10 @@ function UserMenu({ collapsed }: { collapsed: boolean }) {
             <Shield /> Super admin
           </DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
+        <div className="flex items-center justify-between px-2 py-1 text-sm">
+          Theme <ThemeSwitch />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => signOut({ redirectTo: '/login' })}>
           <LogOut /> Sign out

@@ -4,6 +4,7 @@ import { Logo } from '@/components/brand';
 import { Button } from '@/components/ui/button';
 import { PlatformIcon } from '@/components/platform-icon';
 import { PLATFORMS } from '@/lib/platforms';
+import { ThemeSwitch } from '@/components/theme';
 
 const NAV = [
   { href: '/features', label: 'Features' },
@@ -25,6 +26,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             ))}
           </nav>
           <div className="ml-auto hidden items-center gap-2 sm:flex">
+            <ThemeSwitch className="mr-1 hidden lg:inline-flex" />
             <Button asChild variant="ghost" className="rounded-full">
               <Link href="/login">Sign in</Link>
             </Button>
@@ -43,6 +45,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
                 </Link>
               ))}
               <div className="my-1 border-t border-line" />
+              <div className="flex items-center justify-between px-3 py-1.5 text-[14px]">
+                Theme <ThemeSwitch />
+              </div>
               <Link href="/login" className="block rounded-lg px-3 py-2 text-[14px] hover:bg-hover">
                 Sign in
               </Link>

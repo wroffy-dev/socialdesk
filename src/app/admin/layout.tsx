@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireSuperAdminPage } from '@/server/auth/session';
 import { Logo } from '@/components/brand';
 import { AdminNav } from '@/components/admin/admin-nav';
+import { ThemeSwitch } from '@/components/theme';
 
 export const metadata = { title: { default: 'Super admin', template: '%s · Super admin' } };
 
@@ -14,7 +15,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <span className="mx-2 w-fit rounded-full bg-violet-soft px-2 py-0.5 text-xs font-medium text-violet">Super admin</span>
         <AdminNav />
         <div className="mt-auto border-t border-line px-2 pt-3 text-xs text-muted">
-          {user.email}
+          <ThemeSwitch className="mb-2" />
+          <p>{user.email}</p>
           <Link href="/app" className="mt-1 block text-fg hover:underline">
             ← Back to app
           </Link>

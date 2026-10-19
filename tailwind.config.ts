@@ -4,6 +4,7 @@ import animate from 'tailwindcss-animate';
 const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
+  darkMode: 'class',
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     container: { center: true, padding: '1rem' },

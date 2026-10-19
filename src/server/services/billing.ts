@@ -7,6 +7,7 @@ import { assertCan, type WorkspaceCtx } from '../auth/ctx';
 import { DEFAULT_PLAN_KEY, ENTITLEMENT_KEYS, ENTITLEMENT_LABEL, type EntitlementKey } from '../billing/catalog';
 import { cancelSubscription, createSubscription } from '../billing/razorpay';
 import { getUsage, getWorkspacePlan, limitOf, workspaceAllowance } from './entitlements';
+import type { BillingInterval } from '@/lib/pricing';
 
 export async function listPublicPlans() {
   const plans = await db.plan.findMany({ where: { isActive: true, isPublic: true }, orderBy: { sortOrder: 'asc' }, include: { entitlements: true } });
@@ -18,7 +19,9 @@ export async function listPublicPlans() {
     priceAmount: p.priceAmount,
     currency: p.currency,
     interval: p.interval,
+    yearlyPriceAmount: p.yearlyPriceAmount && p.yearlyPriceAmount > 0 ? p.yearlyPriceAmount : null,
     purchasable: !!p.razorpayPlanId && p.priceAmount > 0,
+    purchasableYearly: !!p.razorpayYearlyPlanId && (p.yearlyPriceAmount ?? 0) > 0,
     entitlements: Object.values(ENTITLEMENT_KEYS).map((key) => {
       const e = p.entitlements.find((x) => x.key === key);
       return { key, label: ENTITLEMENT_LABEL[key], enabled: e?.enabled ?? false, limit: e?.limit ?? null };
@@ -55,6 +58,7 @@ export async function getBilling(ctx: WorkspaceCtx) {
       ? {
           status: sub.status,
           provider: sub.provider,
+          interval: sub.interval as BillingInterval,
           currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
           cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
           pendingPlanId: sub.pendingPlanId,
@@ -77,23 +81,27 @@ export async function getBilling(ctx: WorkspaceCtx) {
  * Starts a Razorpay subscription for a paid plan. The workspace is NOT upgraded here: only a
  * verified webhook (subscription.activated / subscription.charged) changes the plan.
  */
-export async function startCheckout(ctx: WorkspaceCtx, planKey: string) {
+export async function startCheckout(ctx: WorkspaceCtx, planKey: string, interval: BillingInterval = 'month') {
   assertCan(ctx, 'billing.manage');
   if (!env().BILLING_ENABLED) throw badRequest('Paid plans are not available yet. Everyone is on free beta access for now.');
   const plan = await db.plan.findUnique({ where: { key: planKey } });
-  if (!plan || !plan.isActive || !plan.razorpayPlanId || plan.priceAmount <= 0) throw notFound('Plan');
+  if (!plan || !plan.isActive || plan.priceAmount <= 0) throw notFound('Plan');
+  const yearly = interval === 'year';
+  const providerPlanId = yearly ? plan.razorpayYearlyPlanId : plan.razorpayPlanId;
+  const amount = yearly ? plan.yearlyPriceAmount : plan.priceAmount;
+  if (!providerPlanId || !amount || amount <= 0) throw badRequest(yearly ? `${plan.name} isn’t available with yearly billing yet.` : `${plan.name} can’t be purchased yet.`);
   const sub = await db.subscription.findUnique({ where: { workspaceId: ctx.workspace.id } });
   if (sub?.provider === 'RAZORPAY' && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(sub.status) && sub.planId !== (await defaultPlanId())) {
     throw conflict('This workspace already has a paid subscription. Cancel it before switching plans.');
   }
-  const rp = await createSubscription(plan.razorpayPlanId, { workspaceId: ctx.workspace.id, planKey: plan.key });
+  const rp = await createSubscription(providerPlanId, { workspaceId: ctx.workspace.id, planKey: plan.key, interval }, interval);
   await db.subscription.upsert({
     where: { workspaceId: ctx.workspace.id },
     create: { workspaceId: ctx.workspace.id, planId: await defaultPlanId(), providerSubscriptionId: rp.id, pendingPlanId: plan.id, status: 'ACTIVE' },
     update: { providerSubscriptionId: rp.id, pendingPlanId: plan.id },
   });
-  await audit({ action: 'billing.checkout_started', actorId: ctx.user.id, workspaceId: ctx.workspace.id, metadata: { plan: plan.key, subscription: rp.id } });
-  return { subscriptionId: rp.id, keyId: env().RAZORPAY_KEY_ID!, shortUrl: rp.short_url ?? null, planName: plan.name, amount: plan.priceAmount, currency: plan.currency };
+  await audit({ action: 'billing.checkout_started', actorId: ctx.user.id, workspaceId: ctx.workspace.id, metadata: { plan: plan.key, interval, subscription: rp.id } });
+  return { subscriptionId: rp.id, keyId: env().RAZORPAY_KEY_ID!, shortUrl: rp.short_url ?? null, planName: plan.name, interval, amount, currency: plan.currency };
 }
 
 export async function cancelPaidSubscription(ctx: WorkspaceCtx) {
@@ -147,8 +155,12 @@ export async function processRazorpayEvent(eventId: string, raw: unknown) {
       case 'subscription.charged':
       case 'subscription.resumed': {
         if (!sub || !subEntity) break;
-        const plan = (sub.pendingPlanId && (await db.plan.findUnique({ where: { id: sub.pendingPlanId } }))) || (await db.plan.findFirst({ where: { razorpayPlanId: subEntity.plan_id } }));
+        const plan =
+          (sub.pendingPlanId && (await db.plan.findUnique({ where: { id: sub.pendingPlanId } }))) ||
+          (await db.plan.findFirst({ where: { OR: [{ razorpayPlanId: subEntity.plan_id }, { razorpayYearlyPlanId: subEntity.plan_id }] } }));
         if (!plan) throw new Error(`No plan for Razorpay plan ${subEntity.plan_id}`);
+        // The Razorpay plan id tells us which price the customer actually subscribed to.
+        const interval: BillingInterval = plan.razorpayYearlyPlanId && plan.razorpayYearlyPlanId === subEntity.plan_id ? 'year' : 'month';
         await db.subscription.update({
           where: { id: sub.id },
           data: {
@@ -156,11 +168,12 @@ export async function processRazorpayEvent(eventId: string, raw: unknown) {
             pendingPlanId: null,
             provider: 'RAZORPAY',
             status: 'ACTIVE',
+            interval,
             currentPeriodStart: ts(subEntity.current_start),
             currentPeriodEnd: ts(subEntity.current_end),
           },
         });
-        await audit({ action: 'billing.subscription_active', workspaceId: sub.workspaceId, metadata: { plan: plan.key, event: ev.event } });
+        await audit({ action: 'billing.subscription_active', workspaceId: sub.workspaceId, metadata: { plan: plan.key, interval, event: ev.event } });
         break;
       }
       case 'subscription.pending':
@@ -174,7 +187,7 @@ export async function processRazorpayEvent(eventId: string, raw: unknown) {
         if (sub) {
           await db.subscription.update({
             where: { id: sub.id },
-            data: { planId: await defaultPlanId(), pendingPlanId: null, provider: 'NONE', providerSubscriptionId: null, status: 'ACTIVE', cancelAtPeriodEnd: false, currentPeriodEnd: null },
+            data: { planId: await defaultPlanId(), pendingPlanId: null, provider: 'NONE', providerSubscriptionId: null, status: 'ACTIVE', interval: 'month', cancelAtPeriodEnd: false, currentPeriodEnd: null },
           });
           await audit({ action: 'billing.subscription_ended', workspaceId: sub.workspaceId, metadata: { event: ev.event } });
         }

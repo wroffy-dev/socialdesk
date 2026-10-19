@@ -9,6 +9,7 @@ import { Checkbox, Switch } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { api, errorMessage } from '@/lib/api-client';
+import { yearlySavingsPct } from '@/lib/pricing';
 import { ENTITLEMENT_LABEL, type EntitlementKey } from '@/server/billing/catalog';
 
 interface Plan {
@@ -19,6 +20,8 @@ interface Plan {
   priceAmount: number;
   currency: string;
   razorpayPlanId: string | null;
+  yearlyPriceAmount: number | null;
+  razorpayYearlyPlanId: string | null;
   isActive: boolean;
   isPublic: boolean;
   sortOrder: number;
@@ -63,10 +66,27 @@ export function PlanEditor({ plan }: { plan: Plan }) {
           <Input value={p.razorpayPlanId ?? ''} placeholder="plan_..." onChange={(e) => setP({ ...p, razorpayPlanId: e.target.value || null })} />
         </label>
         <label className="flex flex-col gap-1 text-[13px]">
+          <span>
+            Yearly price (paise){' '}
+            {yearlySavingsPct(p.priceAmount, p.yearlyPriceAmount) > 0 && <span className="text-accent-ink">· saves {yearlySavingsPct(p.priceAmount, p.yearlyPriceAmount)}%</span>}
+          </span>
+          <Input
+            type="number"
+            min={0}
+            placeholder="Monthly only"
+            value={p.yearlyPriceAmount ?? ''}
+            onChange={(e) => setP({ ...p, yearlyPriceAmount: e.target.value === '' ? null : Number(e.target.value) })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[13px]">
+          Razorpay yearly plan id
+          <Input value={p.razorpayYearlyPlanId ?? ''} placeholder="plan_..." onChange={(e) => setP({ ...p, razorpayYearlyPlanId: e.target.value || null })} />
+        </label>
+        <label className="flex flex-col gap-1 text-[13px]">
           Sort order
           <Input type="number" min={0} value={p.sortOrder} onChange={(e) => setP({ ...p, sortOrder: Number(e.target.value) })} />
         </label>
-        <label className="flex flex-col gap-1 text-[13px] sm:col-span-2 lg:col-span-4">
+        <label className="flex flex-col gap-1 text-[13px] sm:col-span-2">
           Description
           <Input value={p.description ?? ''} onChange={(e) => setP({ ...p, description: e.target.value || null })} />
         </label>
@@ -110,6 +130,8 @@ export function PlanEditor({ plan }: { plan: Plan }) {
                   priceAmount: p.priceAmount,
                   currency: p.currency,
                   razorpayPlanId: p.razorpayPlanId,
+                  yearlyPriceAmount: p.yearlyPriceAmount,
+                  razorpayYearlyPlanId: p.razorpayYearlyPlanId,
                   isActive: p.isActive,
                   isPublic: p.isPublic,
                   sortOrder: p.sortOrder,
