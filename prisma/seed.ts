@@ -24,7 +24,14 @@ async function main() {
   for (const def of DEFAULT_PLANS) {
     const plan = await db.plan.upsert({
       where: { key: def.key },
-      create: { key: def.key, name: def.name, description: def.description, priceAmount: def.priceAmount, sortOrder: def.sortOrder },
+      create: {
+        key: def.key,
+        name: def.name,
+        description: def.description,
+        priceAmount: def.priceAmount,
+        yearlyPriceAmount: def.priceAmount > 0 ? (def.yearlyPriceAmount ?? def.priceAmount * 10) : null,
+        sortOrder: def.sortOrder,
+      },
       update: {},
     });
     for (const [key, value] of Object.entries(def.entitlements) as [EntitlementKey, number | null | boolean][]) {

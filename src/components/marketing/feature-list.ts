@@ -140,11 +140,37 @@ export const PLATFORM_MATRIX: PlatformRow[] = [
   { label: 'Insights', values: { INSTAGRAM: true, FACEBOOK: true, X: 'Needs a paid X API tier', LINKEDIN: 'Pages only', YOUTUBE: true } },
 ];
 
-export const STEPS = [
-  { title: 'Create a project', body: 'Add a project for each brand or client you manage.' },
-  { title: 'Connect your accounts', body: 'Sign in with Instagram, Facebook, X, LinkedIn or YouTube. We only use their official APIs.' },
-  { title: 'Plan and schedule', body: 'Write once, adjust per network, then schedule, queue or publish now.' },
-  { title: 'Reply and learn', body: 'Answer comments in one inbox and see which posts and times work best.' },
+export const STORY = [
+  {
+    eyebrow: 'Create',
+    title: 'Start with an idea',
+    body: 'Write your post once in a single composer, add images or video from your media library, then fine-tune each network’s version.',
+    points: ['Per-network captions and media', 'Live checks against each platform’s rules', 'Reuse media across posts'],
+  },
+  {
+    eyebrow: 'Plan',
+    title: 'Give it a time slot',
+    body: 'Drag posts around a visual calendar, or drop them into your weekly queue and let them take the next free slot.',
+    points: ['Month, week and day views', 'Weekly posting slots per workspace', 'Best-time suggestions from your own results'],
+  },
+  {
+    eyebrow: 'Publish',
+    title: 'Send it everywhere, once',
+    body: 'At the right moment SocialDesk publishes to Instagram, Facebook, X, LinkedIn and YouTube through their official APIs, and posts your first comment.',
+    points: ['Safe retries, never a duplicate', 'Reels, Stories, carousels and Shorts', 'Clear status and reasons if something needs you'],
+  },
+  {
+    eyebrow: 'Engage',
+    title: 'Keep the conversation going',
+    body: 'Comments from Instagram, Facebook and YouTube land in one inbox, so your team can reply quickly and consistently.',
+    points: ['Saved replies for common questions', 'Assign conversations to teammates', 'Internal notes your audience never sees'],
+  },
+  {
+    eyebrow: 'Learn',
+    title: 'See what works, do more of it',
+    body: 'Insights straight from each platform show which posts and which times perform best, so next month’s plan is better than this one.',
+    points: ['Account and post metrics', 'Weekday × hour heatmap', 'CSV export for client reports'],
+  },
 ];
 
 export const TRUST_POINTS = [

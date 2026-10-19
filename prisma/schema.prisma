@@ -264,20 +264,23 @@ model SiteContent {
 // ---------------------------------------------------------------------------
 
 model Plan {
-  id             String   @id @default(cuid())
-  key            String   @unique
-  name           String
-  description    String?
+  id                   String   @id @default(cuid())
+  key                  String   @unique
+  name                 String
+  description          String?
   /// Price per billing interval in the smallest currency unit.
-  priceAmount    Int      @default(0)
-  currency       String   @default("INR")
-  interval       String   @default("month")
-  razorpayPlanId String?
-  isPublic       Boolean  @default(true)
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  priceAmount          Int      @default(0)
+  currency             String   @default("INR")
+  interval             String   @default("month")
+  razorpayPlanId       String?
+  /// Price for a whole year in the smallest currency unit; null = monthly billing only.
+  yearlyPriceAmount    Int?
+  razorpayYearlyPlanId String?
+  isPublic             Boolean  @default(true)
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   entitlements  Entitlement[]
   subscriptions Subscription[]
@@ -319,6 +322,8 @@ model Subscription {
   providerSubscriptionId String?            @unique
   /// Plan the workspace asked to move to; applied only after a verified webhook.
   pendingPlanId          String?
+  /// Billing interval of the paid subscription: "month" or "year".
+  interval               String             @default("month")
   currentPeriodStart     DateTime?
   currentPeriodEnd       DateTime?
   cancelAtPeriodEnd      Boolean            @default(false)
@@ -975,4 +980,34 @@ model SavedReply {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+}
+
+/// Customer quotes shown on the marketing site. Managed by super admins; only published ones show.
+model Testimonial {
+  id          String   @id @default(cuid())
+  quote       String   @db.Text
+  authorName  String
+  authorRole  String?
+  company     String?
+  avatarUrl   String?
+  isPublished Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+}
+
+/// Customer logos ("Trusted by") on the marketing site. Without an image the name is shown as text.
+model CustomerLogo {
+  id          String   @id @default(cuid())
+  name        String
+  imageUrl    String?
+  websiteUrl  String?
+  isPublished Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
 }

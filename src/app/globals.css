@@ -32,6 +32,35 @@
     --radius: 10px;
   }
 
+  /* Dark theme: warm near-black surfaces with the same green accent. */
+  .dark {
+    color-scheme: dark;
+    --canvas: 16 18 16;
+    --surface: 25 27 24;
+    --fg: 236 234 228;
+    --muted: 162 158 149;
+    --faint: 114 111 104;
+    --subtle: 31 33 30;
+    --hover: 41 44 40;
+    --line: 45 48 44;
+    --line-strong: 64 68 62;
+    --primary: 184 228 163;
+    --primary-hover: 202 237 185;
+    --primary-fg: 20 30 16;
+    --accent-soft: 36 54 31;
+    --accent-ink: 150 214 120;
+    --danger: 236 112 90;
+    --danger-soft: 58 29 25;
+    --danger-line: 118 55 45;
+    --warning: 232 182 82;
+    --warning-soft: 56 45 20;
+    --info: 112 170 240;
+    --info-soft: 25 39 60;
+    --violet: 174 152 246;
+    --violet-soft: 43 35 68;
+    --ring: 112 170 240;
+  }
+
   * {
     @apply border-line;
   }

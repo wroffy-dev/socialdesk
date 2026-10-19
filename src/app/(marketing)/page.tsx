@@ -6,7 +6,10 @@ import { getCurrentUser } from '@/server/auth/session';
 import { Button } from '@/components/ui/button';
 import { PlatformIcon } from '@/components/platform-icon';
 import { PLATFORMS, PLATFORM_INFO } from '@/lib/platforms';
-import { FEATURES, INSTAGRAM_FEATURES, STEPS, TRUST_POINTS } from '@/components/marketing/feature-list';
+import { FEATURES, INSTAGRAM_FEATURES, STORY, TRUST_POINTS } from '@/components/marketing/feature-list';
+import { ScrollStory } from '@/components/marketing/scroll-story';
+import { LogoStrip, Testimonials } from '@/components/marketing/social-proof';
+import { publishedSocialProof } from '@/server/services/social-proof';
 import { BestTimeMock, HeroPreview, InboxMock, InstagramMock, ProjectsMock } from '@/components/marketing/mocks';
 import { CtaBand, Faq, SectionHeading } from '@/components/marketing/sections';
 import { HeroScene } from '@/components/marketing/hero-scene';
@@ -28,11 +31,12 @@ const MARQUEE = ['Reels', 'Stories', 'Carousels', 'Collaborators', 'First commen
 export default async function Landing() {
   if (await getCurrentUser()) redirect('/app');
   const billing = process.env.BILLING_ENABLED === 'true';
+  const proof = await publishedSocialProof();
   return (
     <>
       {/* Hero: dark stage with the 3D scene */}
       <section className="px-2 pt-2 sm:px-3 sm:pt-3">
-        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] text-white">
+        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] dark:ring-1 dark:ring-white/10 text-white">
           <div className="sd-grid-bg absolute inset-0 -z-10" />
           <div className="sd-aurora absolute -left-32 -top-40 -z-10 size-[560px] rounded-full bg-[#7ed957]/25 blur-[120px]" />
           <div className="sd-aurora absolute -right-40 top-20 -z-10 size-[520px] rounded-full bg-[#8b5cf6]/25 blur-[120px] [animation-delay:-6s]" />
@@ -108,27 +112,30 @@ export default async function Landing() {
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
-        <Reveal>
-          <SectionHeading center eyebrow="How it works" title="From idea to published in four steps" intro="No complicated setup. Most teams schedule their first post within ten minutes." />
-        </Reveal>
-        <ol className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {STEPS.map((s, i) => (
-            <Reveal as="li" key={s.title} delay={i * 90}>
-              <TiltCard className="rounded-2xl border border-line bg-surface p-6 shadow-card">
-                <span className="text-[44px] font-semibold leading-none text-accent-soft [-webkit-text-stroke:1.5px_rgb(var(--accent-ink))]">0{i + 1}</span>
-                <h3 className="mt-5 text-[17px] font-semibold">{s.title}</h3>
-                <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{s.body}</p>
-              </TiltCard>
+      <LogoStrip logos={proof.logos} />
+
+      {/* Scroll story: one object, five shapes */}
+      <section className="px-2 pt-16 sm:px-3">
+        <div className="relative isolate rounded-[28px] bg-[#0c110d] text-white dark:ring-1 dark:ring-white/10">
+          <div className="sd-grid-bg absolute inset-0 -z-10 rounded-[28px]" />
+          <div className="mx-auto max-w-6xl px-5 pb-10 pt-20 sm:px-8">
+            <Reveal>
+              <p className="text-center text-[13px] font-semibold uppercase tracking-wide text-[#b8e4a3]">How it works</p>
+              <h2 className="mx-auto mt-2 max-w-2xl text-center text-3xl font-semibold tracking-tight sm:text-[44px] sm:leading-tight">
+                From idea to insight, <span className="sd-shine-text">in one flow</span>
+              </h2>
+              <p className="mx-auto mt-3 max-w-xl text-center text-[17px] text-white/60">Scroll to follow a post through SocialDesk.</p>
             </Reveal>
-          ))}
-        </ol>
+            <div className="mt-6">
+              <ScrollStory steps={STORY} />
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Feature grid (dark) */}
-      <section className="px-2 sm:px-3">
-        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] text-white">
+      <section className="px-2 pt-3 sm:px-3">
+        <div className="relative isolate overflow-hidden rounded-[28px] bg-[#0c110d] dark:ring-1 dark:ring-white/10 text-white">
           <div className="sd-grid-bg absolute inset-0 -z-10" />
           <div className="sd-aurora absolute -bottom-40 left-1/3 -z-10 size-[520px] rounded-full bg-[#7ed957]/15 blur-[120px]" />
           <div className="mx-auto max-w-6xl px-5 py-24 sm:px-8">
@@ -288,6 +295,8 @@ export default async function Landing() {
           </div>
         </div>
       </section>
+
+      <Testimonials items={proof.testimonials} />
 
       {/* FAQ */}
       <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-24 sm:px-6">

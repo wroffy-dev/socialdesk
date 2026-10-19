@@ -8,7 +8,7 @@ export default async function AdminPlans() {
   const plans = await listAllPlans();
   return (
     <>
-      <AdminTitle title="Plans & limits" description="Prices are in the smallest currency unit (paise). Limits apply immediately to every workspace on the plan. Leave a limit empty for unlimited." />
+      <AdminTitle title="Plans & limits" description="Prices are in the smallest currency unit (paise). The yearly price is charged once a year; leave it empty for monthly billing only. Limits apply immediately to every workspace on the plan. Leave a limit empty for unlimited." />
       <div className="flex flex-col gap-4">
         {plans.map((p) => (
           <PlanEditor
@@ -21,6 +21,8 @@ export default async function AdminPlans() {
               priceAmount: p.priceAmount,
               currency: p.currency,
               razorpayPlanId: p.razorpayPlanId,
+              yearlyPriceAmount: p.yearlyPriceAmount,
+              razorpayYearlyPlanId: p.razorpayYearlyPlanId,
               isActive: p.isActive,
               isPublic: p.isPublic,
               sortOrder: p.sortOrder,
